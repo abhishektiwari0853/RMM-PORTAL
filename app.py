@@ -1,22 +1,14 @@
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import cv2
-import numpy as np
 import pandas as pd
-from pyzbar.pyzbar import decode
 from datetime import datetime
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
-import queue
+from streamlit_qr_scanner import streamlit_qr_scanner
 
-# --- 1. RTC CONFIG ---
-RTC_CONFIGURATION = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-)
-
+# --- 1. CONFIG ---
 st.set_page_config(page_title="RMM Inter College Portal", layout="wide")
 
-# --- 2. SECURITY ---
+# --- 2. SECURITY (Admin Login) ---
 def check_password():
     if "password_correct" not in st.session_state:
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
@@ -46,6 +38,7 @@ def get_sheet_connection():
         else:
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         client = gspread.authorize(creds)
+        # Apni Sheet ID yahan check kar lena ek baar
         return client.open_by_key("14tEcfJ6j9hVZ76_69rkAoTZC0MpxdtlXemYcl8oacmI").sheet1
     except Exception as e:
         st.error(f"Database Connection Error: {e}")
@@ -58,6 +51,8 @@ def mark_attendance_logic(student_id):
     try:
         today_date = datetime.now().strftime("%d-%m-%Y")
         headers = sheet.row_values(1)
+        
+        # Column Check or Create
         if today_date not in headers:
             new_col_index = len(headers) + 1
             sheet.update_cell(1, new_col_index, today_date)
@@ -69,33 +64,11 @@ def mark_attendance_logic(student_id):
         if cell:
             sheet.update_cell(cell.row, col_to_update, "P")
             return True, today_date
-        return False, "ID Nahi Mili"
+        return False, "ID Database mein nahi mili!"
     except Exception as e:
         return False, str(e)
 
-# --- 5. ULTRA FAST PYZBAR PROCESSOR WITH QUEUE ---
-result_queue = queue.Queue()
-
-class QRProcessor(VideoProcessorBase):
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        # Grayscale conversion for faster detection
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        barcodes = decode(gray)
-        
-        for barcode in barcodes:
-            data = barcode.data.decode('utf-8')
-            if data:
-                s_id = data.split('id=')[-1].strip().upper() if 'id=' in data else data.strip().upper()
-                # Push ID to queue for UI access
-                result_queue.put(s_id)
-                # Visual box feedback
-                (x, y, w, h) = barcode.rect
-                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 3)
-        
-        return frame
-
-# --- 6. UI DESIGN ---
+# --- 5. UI DESIGN ---
 st.markdown("<h1 style='text-align: center; color: #1a73e8;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
 st.divider()
 
@@ -106,85 +79,66 @@ if st.sidebar.button("Logout"):
 
 # --- FEATURE 1: ATTENDANCE ---
 if choice == "Attendance":
-    st.subheader("📝 Live Attendance (Fast Scan)")
-    tabs = st.tabs(["📷 Auto Scanner", "⌨️ Manual Entry"])
+    st.subheader("📝 Attendance System")
+    tabs = st.tabs(["📷 Ultra Fast Scanner", "⌨️ Manual Entry"])
     
     with tabs[0]:
-        st.info("Scanner On Karein. QR ko camera ke samne hold karein.")
-        webrtc_streamer(
-            key="pyzbar-scanner",
-            video_processor_factory=QRProcessor,
-            rtc_configuration=RTC_CONFIGURATION,
-            media_stream_constraints={"video": True, "audio": False},
-            async_processing=True,
-        )
+        st.info("Scanner use karein. Ye 100% detect karega.")
+        # Client-side scanner (Browser level)
+        qr_code = streamlit_qr_scanner(key='attendance_scanner')
 
-        # Check queue for results
-        detected_id = None
-        try:
-            detected_id = result_queue.get(timeout=0.1)
-        except queue.Empty:
-            detected_id = None
-
-        if detected_id:
-            st.session_state["detected_id"] = detected_id
-
-        if "detected_id" in st.session_state:
-            res_id = st.session_state["detected_id"]
-            st.success(f"🎯 Detected: **{res_id}**")
+        if qr_code:
+            # ID Extract Logic (URL handle karne ke liye)
+            res_id = qr_code.split('id=')[-1].strip().upper() if 'id=' in qr_code else qr_code.strip().upper()
+            st.success(f"🎯 Detected ID: **{res_id}**")
             
-            col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button(f"Mark Present for {res_id}"):
+            if st.button(f"Confirm Attendance for {res_id}"):
+                with st.spinner("Sheet Update ho rahi hai..."):
                     success, msg = mark_attendance_logic(res_id)
                     if success:
-                        st.success(f"✅ Attendance Marked for {res_id}!")
+                        st.success(f"✅ {res_id} ki attendance lag gayi!")
                         st.balloons()
-                        del st.session_state["detected_id"]
-                        st.rerun()
                     else:
-                        st.error(msg)
-            with col_b:
-                if st.button("Clear / Scan Again"):
-                    del st.session_state["detected_id"]
-                    st.rerun()
+                        st.error(f"❌ Error: {msg}")
 
     with tabs[1]:
-        with st.form("manual"):
-            m_id = st.text_input("Enter Student ID").upper()
-            if st.form_submit_button("Submit"):
+        with st.form("manual_entry"):
+            m_id = st.text_input("Student ID Enter Karein").upper()
+            submit = st.form_submit_button("Attendance Lagao")
+            if submit:
                 s, m = mark_attendance_logic(m_id)
-                if s: st.success(f"✅ Attendance marked for {m_id}")
+                if s: st.success(f"✅ {m_id} Present Mark Ho Gaya!")
                 else: st.error(m)
 
 # --- FEATURE 2: FEES MANAGEMENT ---
 elif choice == "Fees Management":
-    st.subheader("💰 Fees Deposit")
-    with st.form("fees"):
+    st.subheader("💰 Fees Deposit Section")
+    with st.form("fees_form"):
         f_id = st.text_input("Student ID").upper()
         amt = st.number_input("Amount", min_value=0)
         month = st.selectbox("Month", ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"])
-        if st.form_submit_button("Update"):
+        
+        if st.form_submit_button("Update Fees"):
             try:
                 cell = sheet.find(f_id)
-                # Column 8 for fees management in Google Sheet
+                # Column 8 as per your previous requirement
                 sheet.update_cell(cell.row, 8, f"{amt} ({month})")
-                st.success(f"✅ Fees Updated for {f_id}!")
+                st.success(f"✅ {f_id} ki Fees Update ho gayi!")
             except:
                 st.error("❌ Student ID nahi mili!")
 
 # --- FEATURE 3: SEARCH STUDENT INFO ---
 elif choice == "Search Student Info":
-    st.subheader("🔍 Search Student Record")
-    search_id = st.text_input("Enter ID:").upper()
+    st.subheader("🔍 Student Record Khojein")
+    search_id = st.text_input("Enter Student ID:").upper()
     if st.button("Search"):
         try:
             data = sheet.get_all_values()
             df = pd.DataFrame(data[1:], columns=data[0])
             res = df[df.iloc[:, 0].str.upper() == search_id]
             if not res.empty:
-                st.dataframe(res, use_container_width=True)
+                st.table(res) # Table format for better view
             else:
-                st.warning("❌ Record nahi mila.")
+                st.warning("❌ Koi record nahi mila.")
         except Exception as e:
             st.error(f"Error: {e}")
