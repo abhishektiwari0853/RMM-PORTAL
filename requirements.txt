@@ -3,3 +3,5 @@ gspread
 oauth2client
 opencv-python-headless
 numpy
+pandas
+streamlit-webrtc
