@@ -59,29 +59,49 @@ st.markdown("<h1 style='text-align: center; color: #1a73e8; margin-top: -10px;'>
 st.divider()
 
 # --- 4. NAVIGATION ---
-choice = st.sidebar.radio("Main Menu", ["Attendance Scanner", "Fees Management", "Search Student Info"])
+choice = st.sidebar.radio("Main Menu", ["Attendance", "Fees Management", "Search Student Info"])
 if st.sidebar.button("Logout"):
     del st.session_state["password_correct"]
     st.rerun()
 
-# --- 5. ATTENDANCE SCANNER ---
-if choice == "Attendance Scanner":
-    st.subheader("⚡ Smart QR Attendance")
-    img_file = st.camera_input("Scan Student QR")
-    if img_file:
-        file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, 1)
-        detector = cv2.QRCodeDetector()
-        data, _, _ = detector.detectAndDecode(img)
-        if data:
-            s_id = data.split('id=')[-1].strip().upper() if 'id=' in data else data.strip().upper()
-            try:
-                cell = sheet.find(s_id)
-                sheet.update_cell(cell.row, 7, "P") 
-                st.success(f"✅ Attendance Marked: {s_id}")
-                st.balloons()
-            except:
-                st.error(f"❌ ID '{s_id}' nahi mili!")
+# --- 5. ATTENDANCE (SCANNER + MANUAL) ---
+if choice == "Attendance":
+    st.subheader("📝 Attendance Management")
+    
+    # Do options: Scanner ya Manual
+    att_mode = st.tabs(["📷 QR Scanner", "⌨️ Manual Entry"])
+    
+    # --- SCANNER TAB ---
+    with att_mode[0]:
+        img_file = st.camera_input("Scan Student QR")
+        if img_file:
+            file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
+            img = cv2.imdecode(file_bytes, 1)
+            detector = cv2.QRCodeDetector()
+            data, _, _ = detector.detectAndDecode(img)
+            if data:
+                s_id = data.split('id=')[-1].strip().upper() if 'id=' in data else data.strip().upper()
+                try:
+                    cell = sheet.find(s_id)
+                    sheet.update_cell(cell.row, 7, "P") # Column G
+                    st.success(f"✅ Attendance Marked (QR): {s_id}")
+                    st.balloons()
+                except:
+                    st.error(f"❌ ID '{s_id}' nahi mili!")
+    
+    # --- MANUAL ENTRY TAB ---
+    with att_mode[1]:
+        with st.form("manual_att_form", clear_on_submit=True):
+            m_id = st.text_input("Enter Student ID (e.g., RMEC001)").upper()
+            submit_m = st.form_submit_button("Mark Present")
+            
+            if submit_m and m_id:
+                try:
+                    cell = sheet.find(m_id)
+                    sheet.update_cell(cell.row, 7, "P") # Column G
+                    st.success(f"✅ Manual Attendance Marked: {m_id}")
+                except:
+                    st.error(f"❌ Student ID '{m_id}' sheet mein nahi mili!")
 
 # --- 6. FEES MANAGEMENT ---
 elif choice == "Fees Management":
@@ -93,12 +113,12 @@ elif choice == "Fees Management":
         if st.form_submit_button("Update"):
             try:
                 cell = sheet.find(f_id)
-                sheet.update_cell(cell.row, 8, f"{amt} ({month})")
+                sheet.update_cell(cell.row, 8, f"{amt} ({month})") # Column H
                 st.success("✅ Fees Updated!")
             except:
                 st.error("❌ ID galat hai!")
 
-# --- 7. SEARCH STUDENT INFO (Fix for Duplicate Columns) ---
+# --- 7. SEARCH STUDENT INFO ---
 elif choice == "Search Student Info":
     st.subheader("🔍 Student Record Search")
     search_id = st.text_input("Enter Student ID:").upper()
@@ -108,13 +128,11 @@ elif choice == "Search Student Info":
             try:
                 all_values = sheet.get_all_values()
                 if all_values:
-                    # Header row le rahe hain
                     headers = all_values[0]
-                    # Duplicates handle karne ke liye headers ko rename kar rahe hain
                     clean_headers = []
                     counts = {}
                     for h in headers:
-                        if not h: h = "Unnamed" # Khali headers ke liye
+                        if not h: h = "Unnamed"
                         if h in counts:
                             counts[h] += 1
                             clean_headers.append(f"{h}_{counts[h]}")
@@ -123,8 +141,6 @@ elif choice == "Search Student Info":
                             clean_headers.append(h)
 
                     df = pd.DataFrame(all_values[1:], columns=clean_headers)
-                    
-                    # Pehla column search ke liye
                     id_col = df.columns[0]
                     result = df[df[id_col].astype(str).str.upper() == search_id]
                     
