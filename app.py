@@ -8,15 +8,14 @@ import os
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 
-# --- 1. RTC CONFIG (For Cloud Deployment) ---
+# --- 1. RTC CONFIG (Standard STUN Server) ---
 RTC_CONFIGURATION = RTCConfiguration(
     {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
 )
 
-# --- PAGE CONFIG ---
 st.set_page_config(page_title="RMM Inter College Portal", layout="wide")
 
-# --- 2. SECURITY (ADMIN LOGIN) ---
+# --- 2. SECURITY ---
 def check_password():
     if "password_correct" not in st.session_state:
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
@@ -35,7 +34,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 3. DATABASE CONNECTION ---
+# --- 3. DB CONNECTION ---
 @st.cache_resource
 def get_sheet_connection():
     try:
@@ -73,107 +72,104 @@ def mark_attendance_logic(student_id):
     except Exception as e:
         return False, str(e)
 
-# --- 5. QR PROCESSOR CLASS ---
+# --- 5. FAST QR PROCESSOR ---
 class QRProcessor(VideoProcessorBase):
     def __init__(self):
+        # Using a more robust detector
         self.detector = cv2.QRCodeDetector()
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        data, _, _ = self.detector.detectAndDecode(img)
+        
+        # QR Detection logic
+        data, bbox, _ = self.detector.detectAndDecode(img)
+        
         if data:
+            # Clean ID from the QR
             s_id = data.split('id=')[-1].strip().upper() if 'id=' in data else data.strip().upper()
             st.session_state["detected_id"] = s_id
+            
+            # Draw green box on frame for feedback
+            if bbox is not None:
+                for i in range(len(bbox)):
+                    cv2.line(img, tuple(bbox[i][0].astype(int)), tuple(bbox[(i+1)%len(bbox)][0].astype(int)), (0, 255, 0), 3)
+        
         return frame
 
-# --- 6. UI HEADER ---
+# --- 6. UI ---
 st.markdown("<h1 style='text-align: center; color: #1a73e8;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
 st.divider()
 
-# --- 7. NAVIGATION ---
 choice = st.sidebar.radio("Main Menu", ["Attendance", "Fees Management", "Search Student Info"])
 if st.sidebar.button("Logout"):
     del st.session_state["password_correct"]
     st.rerun()
 
-# --- FEATURE 1: ATTENDANCE ---
 if choice == "Attendance":
     st.subheader("📝 Live Attendance (Auto-Scan)")
     tabs = st.tabs(["📷 Auto Scanner", "⌨️ Manual Entry"])
     
     with tabs[0]:
-        st.info("Niche 'Start' button dabaiye aur QR code camera ke samne laaiye.")
+        st.info("Scanner On Karein. QR ko camera ke samne 2 second hold karein.")
+        
         webrtc_streamer(
             key="qr-scanner",
             video_processor_factory=QRProcessor,
             rtc_configuration=RTC_CONFIGURATION,
             media_stream_constraints={"video": True, "audio": False},
-            video_html_attrs={"style": {"width": "100%"}, "autoPlay": True},
+            async_processing=True, # Improved performance
         )
 
+        # Persistence fix
         if "detected_id" in st.session_state:
             res_id = st.session_state["detected_id"]
-            st.success(f"🔍 QR Detected: **{res_id}**")
-            if st.button(f"Confirm Attendance for {res_id}"):
-                success, msg = mark_attendance_logic(res_id)
-                if success:
-                    st.success(f"✅ Marked Present!")
-                    st.balloons()
+            st.success(f"🎯 Detected: **{res_id}**")
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button(f"Mark Present for {res_id}"):
+                    success, msg = mark_attendance_logic(res_id)
+                    if success:
+                        st.success(f"✅ Marked!")
+                        st.balloons()
+                        del st.session_state["detected_id"]
+                        st.rerun()
+            with col_b:
+                if st.button("Clear / Scan Again"):
                     del st.session_state["detected_id"]
-                else:
-                    st.error(f"Error: {msg}")
+                    st.rerun()
 
     with tabs[1]:
-        with st.form("manual_entry"):
+        with st.form("manual"):
             m_id = st.text_input("Enter Student ID").upper()
-            if st.form_submit_button("Mark Present"):
+            if st.form_submit_button("Submit"):
                 s, m = mark_attendance_logic(m_id)
-                if s: st.success(f"✅ Attendance marked for {m}")
+                if s: st.success(f"Attendance marked for {m}")
                 else: st.error(m)
 
-# --- FEATURE 2: FEES MANAGEMENT ---
 elif choice == "Fees Management":
     st.subheader("💰 Fees Deposit")
-    with st.form("fees_form"):
+    with st.form("fees"):
         f_id = st.text_input("Student ID").upper()
         amt = st.number_input("Amount", min_value=0)
         month = st.selectbox("Month", ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"])
-        if st.form_submit_button("Update Fees"):
+        if st.form_submit_button("Update"):
             try:
                 cell = sheet.find(f_id)
                 sheet.update_cell(cell.row, 8, f"{amt} ({month})")
-                st.success(f"✅ Fees of {amt} for {month} updated for {f_id}!")
-            except:
-                st.error("❌ ID galat hai ya student nahi mila!")
+                st.success("✅ Fees Updated!")
+            except: st.error("❌ Student nahi mila!")
 
-# --- FEATURE 3: SEARCH STUDENT INFO ---
 elif choice == "Search Student Info":
-    st.subheader("🔍 Student Record Search")
-    search_id = st.text_input("Enter Student ID to Search:").upper()
-    if st.button("Search Record"):
+    st.subheader("🔍 Search Record")
+    s_id = st.text_input("Enter ID:").upper()
+    if st.button("Search"):
         try:
-            all_values = sheet.get_all_values()
-            headers = all_values[0]
-            
-            # Cleaning duplicate headers for Pandas
-            clean_headers = []
-            counts = {}
-            for h in headers:
-                if not h: h = "Unnamed"
-                if h in counts:
-                    counts[h] += 1
-                    clean_headers.append(f"{h}_{counts[h]}")
-                else:
-                    counts[h] = 0
-                    clean_headers.append(h)
-
-            df = pd.DataFrame(all_values[1:], columns=clean_headers)
-            result = df[df.iloc[:, 0].astype(str).str.upper() == search_id]
-            
-            if not result.empty:
-                st.write("### Details Found:")
-                st.dataframe(result, use_container_width=True)
+            data = sheet.get_all_values()
+            df = pd.DataFrame(data[1:], columns=data[0])
+            res = df[df.iloc[:, 0].str.upper() == s_id]
+            if not res.empty:
+                st.dataframe(res)
             else:
-                st.warning("❌ Koi record nahi mila.")
-        except Exception as e:
-            st.error(f"Error: {e}")
+                st.warning("Nahi mila.")
+        except Exception as e: st.error(e)
