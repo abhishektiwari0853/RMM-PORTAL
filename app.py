@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import os
+from datetime import datetime
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="RMM Inter College Portal", layout="wide")
@@ -46,6 +47,33 @@ def get_sheet_connection():
 
 sheet = get_sheet_connection()
 
+# --- 🆕 ATTENDANCE LOGIC (Date-wise) ---
+def mark_attendance_logic(student_id):
+    try:
+        # 1. Aaj ki date nikaalo
+        today_date = datetime.now().strftime("%d-%m-%Y")
+        
+        # 2. Saare headers check karo ki aaj ki date ka column hai ya nahi
+        headers = sheet.row_values(1)
+        if today_date not in headers:
+            # Naya column jodo (Last column ke baad)
+            new_col_index = len(headers) + 1
+            sheet.update_cell(1, new_col_index, today_date)
+            col_to_update = new_col_index
+        else:
+            # Agar date mil gayi, toh uska column index lo
+            col_to_update = headers.index(today_date) + 1
+            
+        # 3. Student ki ID dhoondo
+        cell = sheet.find(student_id)
+        if cell:
+            sheet.update_cell(cell.row, col_to_update, "P")
+            return True, today_date
+        else:
+            return False, "ID nahi mili"
+    except Exception as e:
+        return False, str(e)
+
 # --- 3. HEADER & LOGO ---
 logo_path = "School_logo.png"
 col1, col2, col3 = st.columns([2.5, 1, 2.5])
@@ -67,11 +95,8 @@ if st.sidebar.button("Logout"):
 # --- 5. ATTENDANCE (SCANNER + MANUAL) ---
 if choice == "Attendance":
     st.subheader("📝 Attendance Management")
-    
-    # Do options: Scanner ya Manual
     att_mode = st.tabs(["📷 QR Scanner", "⌨️ Manual Entry"])
     
-    # --- SCANNER TAB ---
     with att_mode[0]:
         img_file = st.camera_input("Scan Student QR")
         if img_file:
@@ -81,27 +106,23 @@ if choice == "Attendance":
             data, _, _ = detector.detectAndDecode(img)
             if data:
                 s_id = data.split('id=')[-1].strip().upper() if 'id=' in data else data.strip().upper()
-                try:
-                    cell = sheet.find(s_id)
-                    sheet.update_cell(cell.row, 7, "P") # Column G
-                    st.success(f"✅ Attendance Marked (QR): {s_id}")
+                success, msg = mark_attendance_logic(s_id)
+                if success:
+                    st.success(f"✅ {s_id} marked Present for {msg}")
                     st.balloons()
-                except:
-                    st.error(f"❌ ID '{s_id}' nahi mili!")
-    
-    # --- MANUAL ENTRY TAB ---
+                else:
+                    st.error(f"❌ Error: {msg}")
+
     with att_mode[1]:
         with st.form("manual_att_form", clear_on_submit=True):
-            m_id = st.text_input("Enter Student ID (e.g., RMEC001)").upper()
+            m_id = st.text_input("Enter Student ID").upper()
             submit_m = st.form_submit_button("Mark Present")
-            
             if submit_m and m_id:
-                try:
-                    cell = sheet.find(m_id)
-                    sheet.update_cell(cell.row, 7, "P") # Column G
-                    st.success(f"✅ Manual Attendance Marked: {m_id}")
-                except:
-                    st.error(f"❌ Student ID '{m_id}' sheet mein nahi mili!")
+                success, msg = mark_attendance_logic(m_id)
+                if success:
+                    st.success(f"✅ {m_id} marked Present for {msg}")
+                else:
+                    st.error(f"❌ Error: {msg}")
 
 # --- 6. FEES MANAGEMENT ---
 elif choice == "Fees Management":
@@ -113,7 +134,7 @@ elif choice == "Fees Management":
         if st.form_submit_button("Update"):
             try:
                 cell = sheet.find(f_id)
-                sheet.update_cell(cell.row, 8, f"{amt} ({month})") # Column H
+                sheet.update_cell(cell.row, 8, f"{amt} ({month})") # Fees logic fixed at Col 8
                 st.success("✅ Fees Updated!")
             except:
                 st.error("❌ ID galat hai!")
@@ -122,7 +143,6 @@ elif choice == "Fees Management":
 elif choice == "Search Student Info":
     st.subheader("🔍 Student Record Search")
     search_id = st.text_input("Enter Student ID:").upper()
-    
     if st.button("Search"):
         if search_id:
             try:
@@ -143,13 +163,10 @@ elif choice == "Search Student Info":
                     df = pd.DataFrame(all_values[1:], columns=clean_headers)
                     id_col = df.columns[0]
                     result = df[df[id_col].astype(str).str.upper() == search_id]
-                    
                     if not result.empty:
                         st.write("### Student Details Found:")
                         st.dataframe(result, use_container_width=True)
                     else:
                         st.warning(f"❌ Student ID '{search_id}' nahi mili.")
-                else:
-                    st.error("Sheet khaali hai!")
             except Exception as e:
                 st.error(f"Error: {e}")
