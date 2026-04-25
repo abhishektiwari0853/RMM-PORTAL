@@ -2,6 +2,6 @@ streamlit
 gspread
 oauth2client
 opencv-python-headless
-numpy
 pandas
+pyzbar
 streamlit-webrtc
