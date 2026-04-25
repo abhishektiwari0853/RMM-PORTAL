@@ -7,6 +7,7 @@ import pandas as pd
 from pyzbar.pyzbar import decode
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
+import queue
 
 # --- 1. RTC CONFIG ---
 RTC_CONFIGURATION = RTCConfiguration(
@@ -72,28 +73,29 @@ def mark_attendance_logic(student_id):
     except Exception as e:
         return False, str(e)
 
-# --- 5. FAST PYZBAR PROCESSOR ---
+# --- 5. ULTRA FAST PYZBAR PROCESSOR WITH QUEUE ---
+result_queue = queue.Queue()
+
 class QRProcessor(VideoProcessorBase):
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        
-        # PyZbar se turant detection
-        barcodes = decode(img)
+        # Grayscale conversion for faster detection
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        barcodes = decode(gray)
         
         for barcode in barcodes:
             data = barcode.data.decode('utf-8')
             if data:
-                # ID extract karne ka logic
                 s_id = data.split('id=')[-1].strip().upper() if 'id=' in data else data.strip().upper()
-                st.session_state["detected_id"] = s_id
-                
-                # Green border for feedback
+                # Push ID to queue for UI access
+                result_queue.put(s_id)
+                # Visual box feedback
                 (x, y, w, h) = barcode.rect
-                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 3)
         
         return frame
 
-# --- 6. UI ---
+# --- 6. UI DESIGN ---
 st.markdown("<h1 style='text-align: center; color: #1a73e8;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
 st.divider()
 
@@ -108,7 +110,7 @@ if choice == "Attendance":
     tabs = st.tabs(["📷 Auto Scanner", "⌨️ Manual Entry"])
     
     with tabs[0]:
-        st.info("Scanner On Karein. PyZbar turant detect karega.")
+        st.info("Scanner On Karein. QR ko camera ke samne hold karein.")
         webrtc_streamer(
             key="pyzbar-scanner",
             video_processor_factory=QRProcessor,
@@ -116,6 +118,16 @@ if choice == "Attendance":
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True,
         )
+
+        # Check queue for results
+        detected_id = None
+        try:
+            detected_id = result_queue.get(timeout=0.1)
+        except queue.Empty:
+            detected_id = None
+
+        if detected_id:
+            st.session_state["detected_id"] = detected_id
 
         if "detected_id" in st.session_state:
             res_id = st.session_state["detected_id"]
@@ -126,10 +138,12 @@ if choice == "Attendance":
                 if st.button(f"Mark Present for {res_id}"):
                     success, msg = mark_attendance_logic(res_id)
                     if success:
-                        st.success(f"✅ Attendance Marked!")
+                        st.success(f"✅ Attendance Marked for {res_id}!")
                         st.balloons()
                         del st.session_state["detected_id"]
                         st.rerun()
+                    else:
+                        st.error(msg)
             with col_b:
                 if st.button("Clear / Scan Again"):
                     del st.session_state["detected_id"]
@@ -140,7 +154,7 @@ if choice == "Attendance":
             m_id = st.text_input("Enter Student ID").upper()
             if st.form_submit_button("Submit"):
                 s, m = mark_attendance_logic(m_id)
-                if s: st.success(f"✅ Attendance marked for {m}")
+                if s: st.success(f"✅ Attendance marked for {m_id}")
                 else: st.error(m)
 
 # --- FEATURE 2: FEES MANAGEMENT ---
@@ -153,7 +167,7 @@ elif choice == "Fees Management":
         if st.form_submit_button("Update"):
             try:
                 cell = sheet.find(f_id)
-                # Column 8 for fees
+                # Column 8 for fees management in Google Sheet
                 sheet.update_cell(cell.row, 8, f"{amt} ({month})")
                 st.success(f"✅ Fees Updated for {f_id}!")
             except:
