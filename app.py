@@ -5,7 +5,6 @@ import cv2
 import numpy as np
 import pandas as pd
 import os
-import json
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="RMM Inter College Portal", layout="wide")
@@ -18,7 +17,7 @@ def check_password():
         with col2:
             st.text_input("Password Daalo", type="password", key="password_input")
             if st.button("Login"):
-                if st.session_state["password_input"] == "RMM2014": # Password yahan badal sakte ho
+                if st.session_state["password_input"] == "RMM2014": # Tera password
                     st.session_state["password_correct"] = True
                     st.rerun()
                 else:
@@ -42,6 +41,7 @@ def get_sheet_connection():
             # For Local Testing
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         client = gspread.authorize(creds)
+        # Teri Sheet ID sahi hai
         return client.open_by_key("14tEcfJ6j9hVZ76_69rkAoTZC0MpxdtlXemYcl8oacmI").sheet1
     except Exception as e:
         st.error(f"Database Connect nahi hua: {e}")
@@ -68,34 +68,24 @@ if st.sidebar.button("Logout"):
     del st.session_state["password_correct"]
     st.rerun()
 
-# --- 5. ATTENDANCE SCANNER (Improved QR Logic) ---
+# --- 5. ATTENDANCE SCANNER ---
 if choice == "Attendance Scanner":
     st.subheader("⚡ Smart QR Attendance")
-    st.info("QR Code ko camera ke paas laayein aur 'Take Photo' par click karein.")
-    
     img_file = st.camera_input("Scan Student QR")
-    
     if img_file:
         file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
-        
-        # QR Code detection
         detector = cv2.QRCodeDetector()
-        data, bbox, _ = detector.detectAndDecode(img)
-        
+        data, _, _ = detector.detectAndDecode(img)
         if data:
-            # Clean ID (agar QR mein 'id=RMM001' hai toh sirf 'RMM001' lega)
             s_id = data.split('id=')[-1].strip().upper() if 'id=' in data else data.strip().upper()
             try:
                 cell = sheet.find(s_id)
-                if cell:
-                    sheet.update_cell(cell.row, 7, "P") # Column G for Attendance
-                    st.success(f"✅ Attendance Marked for ID: {s_id}")
-                    st.balloons()
+                sheet.update_cell(cell.row, 7, "P") # Column G update
+                st.success(f"✅ Attendance Marked: {s_id}")
+                st.balloons()
             except:
                 st.error(f"❌ Student ID '{s_id}' Sheet mein nahi mili!")
-        else:
-            st.error("❌ QR Code detect nahi hua. Thoda saaf photo kheenchiye.")
 
 # --- 6. FEES MANAGEMENT ---
 elif choice == "Fees Management":
@@ -104,35 +94,40 @@ elif choice == "Fees Management":
         f_id = st.text_input("Enter Student ID").upper()
         amt = st.number_input("Amount Received", min_value=0)
         month = st.selectbox("Select Month", ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"])
-        submit = st.form_submit_button("Update Payment")
-        
-        if submit and f_id:
+        if st.form_submit_button("Update Payment"):
             try:
                 cell = sheet.find(f_id)
-                sheet.update_cell(cell.row, 8, f"{amt} ({month})") # Column H for Fees
+                sheet.update_cell(cell.row, 8, f"{amt} ({month})") # Column H update
                 st.success(f"✅ Fees Updated for {f_id}!")
             except:
                 st.error("❌ ID galat hai!")
 
-# --- 7. SEARCH STUDENT INFO ---
+# --- 7. SEARCH STUDENT INFO (Safe from Duplicate Headers) ---
 elif choice == "Search Student Info":
-    st.subheader("🔍 Student Record & History")
-    search_id = st.text_input("Student ID Daalo:").upper()
+    st.subheader("🔍 Student Record Search")
+    search_id = st.text_input("Enter Student ID (e.g., RMEC001):").upper()
     
-    if st.button("Search Details"):
+    if st.button("Search"):
         if search_id:
             try:
-                data = sheet.get_all_records()
-                df = pd.DataFrame(data)
-                # Filter student by ID (Assuming 1st column header is 'ID')
-                result = df[df['ID'].astype(str).str.upper() == search_id]
-                
-                if not result.empty:
-                    st.write("### Student Full Profile:")
-                    st.dataframe(result, use_container_width=True)
+                # get_all_values() duplicate headers se nahi darta
+                all_values = sheet.get_all_values()
+                if all_values:
+                    # Raw data se DataFrame banana
+                    df = pd.DataFrame(all_values[1:], columns=all_values[0])
+                    
+                    # Pehla column (ID) check karna
+                    id_column = df.columns[0] 
+                    result = df[df[id_column].astype(str).str.upper() == search_id]
+                    
+                    if not result.empty:
+                        st.write("### Student Details Found:")
+                        st.dataframe(result, use_container_width=True)
+                    else:
+                        st.warning(f"❌ Record not found for ID: {search_id}")
                 else:
-                    st.warning("❌ Is ID ka koi record nahi mila.")
+                    st.error("Sheet khaali hai!")
             except Exception as e:
-                st.error(f"Sheet Error: {e}. Check karein ki Column Header 'ID' hai ya nahi.")
+                st.error(f"Error: {e}")
         else:
-            st.warning("Pehle ID toh daalo!")
+            st.info("Pehle ID type karein.")
