@@ -4,11 +4,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 import cv2
 import numpy as np
 import pandas as pd
-import os
+from pyzbar.pyzbar import decode
 from datetime import datetime
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 
-# --- 1. RTC CONFIG (Standard STUN Server) ---
+# --- 1. RTC CONFIG ---
 RTC_CONFIGURATION = RTCConfiguration(
     {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
 )
@@ -34,7 +34,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 3. DB CONNECTION ---
+# --- 3. DATABASE CONNECTION ---
 @st.cache_resource
 def get_sheet_connection():
     try:
@@ -47,7 +47,7 @@ def get_sheet_connection():
         client = gspread.authorize(creds)
         return client.open_by_key("14tEcfJ6j9hVZ76_69rkAoTZC0MpxdtlXemYcl8oacmI").sheet1
     except Exception as e:
-        st.error(f"Database Error: {e}")
+        st.error(f"Database Connection Error: {e}")
         return None
 
 sheet = get_sheet_connection()
@@ -72,27 +72,24 @@ def mark_attendance_logic(student_id):
     except Exception as e:
         return False, str(e)
 
-# --- 5. FAST QR PROCESSOR ---
+# --- 5. FAST PYZBAR PROCESSOR ---
 class QRProcessor(VideoProcessorBase):
-    def __init__(self):
-        # Using a more robust detector
-        self.detector = cv2.QRCodeDetector()
-
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         
-        # QR Detection logic
-        data, bbox, _ = self.detector.detectAndDecode(img)
+        # PyZbar se turant detection
+        barcodes = decode(img)
         
-        if data:
-            # Clean ID from the QR
-            s_id = data.split('id=')[-1].strip().upper() if 'id=' in data else data.strip().upper()
-            st.session_state["detected_id"] = s_id
-            
-            # Draw green box on frame for feedback
-            if bbox is not None:
-                for i in range(len(bbox)):
-                    cv2.line(img, tuple(bbox[i][0].astype(int)), tuple(bbox[(i+1)%len(bbox)][0].astype(int)), (0, 255, 0), 3)
+        for barcode in barcodes:
+            data = barcode.data.decode('utf-8')
+            if data:
+                # ID extract karne ka logic
+                s_id = data.split('id=')[-1].strip().upper() if 'id=' in data else data.strip().upper()
+                st.session_state["detected_id"] = s_id
+                
+                # Green border for feedback
+                (x, y, w, h) = barcode.rect
+                cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
         
         return frame
 
@@ -105,22 +102,21 @@ if st.sidebar.button("Logout"):
     del st.session_state["password_correct"]
     st.rerun()
 
+# --- FEATURE 1: ATTENDANCE ---
 if choice == "Attendance":
-    st.subheader("📝 Live Attendance (Auto-Scan)")
+    st.subheader("📝 Live Attendance (Fast Scan)")
     tabs = st.tabs(["📷 Auto Scanner", "⌨️ Manual Entry"])
     
     with tabs[0]:
-        st.info("Scanner On Karein. QR ko camera ke samne 2 second hold karein.")
-        
+        st.info("Scanner On Karein. PyZbar turant detect karega.")
         webrtc_streamer(
-            key="qr-scanner",
+            key="pyzbar-scanner",
             video_processor_factory=QRProcessor,
             rtc_configuration=RTC_CONFIGURATION,
             media_stream_constraints={"video": True, "audio": False},
-            async_processing=True, # Improved performance
+            async_processing=True,
         )
 
-        # Persistence fix
         if "detected_id" in st.session_state:
             res_id = st.session_state["detected_id"]
             st.success(f"🎯 Detected: **{res_id}**")
@@ -130,7 +126,7 @@ if choice == "Attendance":
                 if st.button(f"Mark Present for {res_id}"):
                     success, msg = mark_attendance_logic(res_id)
                     if success:
-                        st.success(f"✅ Marked!")
+                        st.success(f"✅ Attendance Marked!")
                         st.balloons()
                         del st.session_state["detected_id"]
                         st.rerun()
@@ -144,9 +140,10 @@ if choice == "Attendance":
             m_id = st.text_input("Enter Student ID").upper()
             if st.form_submit_button("Submit"):
                 s, m = mark_attendance_logic(m_id)
-                if s: st.success(f"Attendance marked for {m}")
+                if s: st.success(f"✅ Attendance marked for {m}")
                 else: st.error(m)
 
+# --- FEATURE 2: FEES MANAGEMENT ---
 elif choice == "Fees Management":
     st.subheader("💰 Fees Deposit")
     with st.form("fees"):
@@ -156,20 +153,24 @@ elif choice == "Fees Management":
         if st.form_submit_button("Update"):
             try:
                 cell = sheet.find(f_id)
+                # Column 8 for fees
                 sheet.update_cell(cell.row, 8, f"{amt} ({month})")
-                st.success("✅ Fees Updated!")
-            except: st.error("❌ Student nahi mila!")
+                st.success(f"✅ Fees Updated for {f_id}!")
+            except:
+                st.error("❌ Student ID nahi mili!")
 
+# --- FEATURE 3: SEARCH STUDENT INFO ---
 elif choice == "Search Student Info":
-    st.subheader("🔍 Search Record")
-    s_id = st.text_input("Enter ID:").upper()
+    st.subheader("🔍 Search Student Record")
+    search_id = st.text_input("Enter ID:").upper()
     if st.button("Search"):
         try:
             data = sheet.get_all_values()
             df = pd.DataFrame(data[1:], columns=data[0])
-            res = df[df.iloc[:, 0].str.upper() == s_id]
+            res = df[df.iloc[:, 0].str.upper() == search_id]
             if not res.empty:
-                st.dataframe(res)
+                st.dataframe(res, use_container_width=True)
             else:
-                st.warning("Nahi mila.")
-        except Exception as e: st.error(e)
+                st.warning("❌ Record nahi mila.")
+        except Exception as e:
+            st.error(f"Error: {e}")
