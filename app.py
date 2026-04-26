@@ -137,7 +137,3 @@ elif choice == "Search Student Info":
                 st.warning("❌ Koi record nahi mila.")
         except Exception as e:
             st.error(f"Error: {e}")
-
-  
-       
-                     
