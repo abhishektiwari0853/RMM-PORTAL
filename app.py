@@ -77,7 +77,7 @@ if choice == "Haziri (Attendance)":
                     st.error("❌ ID nahi mili!")
             except Exception as e: st.error(f"Error: {e}")
 
-# --- FEATURE 2: FEES (FIXED MAPPING FOR COLUMN G) ---
+# --- FEATURE 2: FEES (COLUMN G) ---
 elif choice == "Fees Jama Karein":
     st.subheader("💰 Fees Collection")
     with st.form("fees_form"):
@@ -90,26 +90,20 @@ elif choice == "Fees Jama Karein":
                 master_cell = master_sheet.find(f_id)
                 if master_cell:
                     row_data = master_sheet.row_values(master_cell.row)
-                    
-                    # Column G (Total Fees) is index 6 in Python
                     current_fees = 0
                     if len(row_data) >= 7:
                         val = str(row_data[6]).strip()
                         current_fees = int(val) if val.isdigit() else 0
                     
                     new_total = current_fees + amt
-                    
-                    # Update Column G (7th Column)
                     master_sheet.update_cell(master_cell.row, 7, str(new_total))
-                    # Log in Fees_Data tab
                     fees_sheet.append_row([f_id, amt, month, datetime.now().strftime("%d-%m-%Y %H:%M")])
-                    
                     st.success(f"✅ Fees Updated! New Total: ₹{new_total}")
                 else:
                     st.error("❌ ID nahi mili.")
             except Exception as e: st.error(f"Error: {e}")
 
-# --- FEATURE 3: SEARCH (FIXED MAPPING FOR BLANK NODE) ---
+# --- FEATURE 3: SEARCH (WITH NEW ADDRESS COLUMN H) ---
 elif choice == "Student Khojein":
     st.subheader("🔍 Student Record")
     search_id = st.text_input("Student ID").upper()
@@ -120,31 +114,33 @@ elif choice == "Student Khojein":
             student_row = next((r for r in records if r[0].upper() == search_id), None)
             
             if student_row:
-                # Mapping as per your sheet photo:
-                # A:0=ID, B:1=Name, C:2=Roll, D:3=Father, E:4=Node(Blank), F:5=Mobile, G:6=TotalFees
+                # Mapping:
+                # A:0=ID, B:1=Name, C:2=Roll, D:3=Father, E:4=Node, F:5=Mobile, G:6=TotalFees, H:7=Address
                 name = student_row[1] if len(student_row) > 1 else "N/A"
                 roll = student_row[2] if len(student_row) > 2 else "N/A"
                 father = student_row[3] if len(student_row) > 3 else "N/A"
                 mobile = student_row[5] if len(student_row) > 5 else "N/A" 
                 total_fees = student_row[6] if len(student_row) > 6 else "0" 
+                address = student_row[7] if len(student_row) > 7 else "Not Provided"
                 
                 st.info(f"### Student: {name}")
                 c1, c2 = st.columns(2)
                 with c1:
                     st.write(f"**Roll No:** {roll}")
                     st.write(f"**Father's Name:** {father}")
+                    st.write(f"**Address:** {address}") # Address yahan dikhega
                 with c2:
                     st.write(f"**Mobile:** {mobile}")
                     st.markdown(f"### 💰 Total Fees Paid: ₹{total_fees}")
                 
                 st.divider()
-                st.write("#### Fees History (Last Transactions)")
+                st.write("#### Fees History")
                 all_fees = fees_sheet.get_all_values()
                 hist = [r for r in all_fees if r[0].upper() == search_id]
                 if hist:
                     st.table(hist)
                 else:
-                    st.write("No history found.")
+                    st.write("No history.")
             else:
                 st.warning("ID not found.")
         except Exception as e: st.error(e)
