@@ -1,6 +1,9 @@
 streamlit
 gspread
 oauth2client
+opencv-python-headless
 pandas
-streamlit-camera-qr
+pyzbar
+streamlit-webrtc
+
 
