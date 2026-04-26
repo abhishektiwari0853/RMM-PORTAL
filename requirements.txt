@@ -3,6 +3,3 @@ gspread
 oauth2client
 pandas
 streamlit-qr-reader
-
-
-
