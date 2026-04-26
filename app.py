@@ -1,5 +1,4 @@
-
-  import streamlit as st
+import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
@@ -118,7 +117,6 @@ elif choice == "Fees Management":
         if st.form_submit_button("Update Fees"):
             try:
                 cell = sheet.find(f_id)
-                # Column 8 for fees
                 sheet.update_cell(cell.row, 8, f"{amt} ({month})")
                 st.success(f"✅ {f_id} ki Fees Update ho gayi!")
             except:
@@ -139,3 +137,7 @@ elif choice == "Search Student Info":
                 st.warning("❌ Koi record nahi mila.")
         except Exception as e:
             st.error(f"Error: {e}")
+
+  
+       
+                     
