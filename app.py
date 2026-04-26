@@ -3,7 +3,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from datetime import datetime
-from streamlit_camera_qr import camera_qr
+from streamlit_qr_reader import streamlit_qr_reader
 
 # --- 1. CONFIG ---
 st.set_page_config(page_title="RMM Inter College Portal", layout="wide")
@@ -40,7 +40,7 @@ def get_sheet_connection():
         client = gspread.authorize(creds)
         return client.open_by_key("14tEcfJ6j9hVZ76_69rkAoTZC0MpxdtlXemYcl8oacmI").sheet1
     except Exception as e:
-        st.error(f"Database Connection Error: {e}")
+        st.error(f"Database Error: {e}")
         return None
 
 sheet = get_sheet_connection()
@@ -50,15 +50,18 @@ def mark_attendance_logic(student_id):
     try:
         today_date = datetime.now().strftime("%d-%m-%Y")
         headers = sheet.row_values(1)
+        
+        # Column management
         if today_date not in headers:
-            new_col_index = len(headers) + 1
-            sheet.update_cell(1, new_col_index, today_date)
-            col_to_update = new_col_index
+            new_col = len(headers) + 1
+            sheet.update_cell(1, new_col, today_date)
+            col_idx = new_col
         else:
-            col_to_update = headers.index(today_date) + 1
+            col_idx = headers.index(today_date) + 1
+        
         cell = sheet.find(student_id)
         if cell:
-            sheet.update_cell(cell.row, col_to_update, "P")
+            sheet.update_cell(cell.row, col_idx, "P")
             return True, today_date
         return False, "ID Database mein nahi mili!"
     except Exception as e:
@@ -76,31 +79,37 @@ if st.sidebar.button("Logout"):
 if choice == "Attendance":
     st.subheader("📝 Attendance System")
     tabs = st.tabs(["📷 QR Scanner", "⌨️ Manual Entry"])
+    
     with tabs[0]:
-        st.info("Scanner use karein. QR ko camera ke samne laayein.")
-        qr_data = camera_qr(key='attendance_scanner')
-        if qr_data:
-            res_id = qr_data.split('id=')[-1].strip().upper() if 'id=' in qr_data else qr_data.strip().upper()
-            st.success(f"🎯 Detected ID: **{res_id}**")
-            if st.button(f"Confirm Attendance for {res_id}"):
+        st.info("Scanner use karein. QR ko samne laayein.")
+        # Naya stable scanner
+        qr_code = streamlit_qr_reader(key='qr_scanner')
+
+        if qr_code:
+            # ID Extract Logic
+            s_id = qr_code.split('id=')[-1].strip().upper() if 'id=' in qr_code else qr_code.strip().upper()
+            st.success(f"🎯 Detected: **{s_id}**")
+            
+            if st.button(f"Confirm Present for {s_id}"):
                 with st.spinner("Sheet Update ho rahi hai..."):
-                    success, msg = mark_attendance_logic(res_id)
+                    success, msg = mark_attendance_logic(s_id)
                     if success:
-                        st.success(f"✅ {res_id} ki attendance lag gayi!")
+                        st.success(f"✅ {s_id} ki attendance lag gayi!")
                         st.balloons()
                     else:
                         st.error(f"❌ Error: {msg}")
+
     with tabs[1]:
-        with st.form("manual_entry"):
+        with st.form("manual"):
             m_id = st.text_input("Student ID Enter Karein").upper()
             if st.form_submit_button("Attendance Lagao"):
                 s, m = mark_attendance_logic(m_id)
-                if s: st.success(f"✅ {m_id} Present Mark Ho Gaya!")
+                if s: st.success(f"✅ {m_id} Present Mark!")
                 else: st.error(m)
 
 elif choice == "Fees Management":
-    st.subheader("💰 Fees Deposit Section")
-    with st.form("fees_form"):
+    st.subheader("💰 Fees Deposit")
+    with st.form("fees"):
         f_id = st.text_input("Student ID").upper()
         amt = st.number_input("Amount", min_value=0)
         month = st.selectbox("Month", ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"])
@@ -108,13 +117,13 @@ elif choice == "Fees Management":
             try:
                 cell = sheet.find(f_id)
                 sheet.update_cell(cell.row, 8, f"{amt} ({month})")
-                st.success(f"✅ {f_id} ki Fees Update ho gayi!")
+                st.success("✅ Fees Update Ho Gayi!")
             except:
                 st.error("❌ Student ID nahi mili!")
 
 elif choice == "Search Student Info":
-    st.subheader("🔍 Student Record Khojein")
-    search_id = st.text_input("Enter Student ID:").upper()
+    st.subheader("🔍 Search Record")
+    search_id = st.text_input("Enter ID:").upper()
     if st.button("Search"):
         try:
             data = sheet.get_all_values()
@@ -123,6 +132,6 @@ elif choice == "Search Student Info":
             if not res.empty:
                 st.dataframe(res, use_container_width=True)
             else:
-                st.warning("❌ Koi record nahi mila.")
+                st.warning("❌ Record nahi mila.")
         except Exception as e:
             st.error(f"Error: {e}")
