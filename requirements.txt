@@ -2,6 +2,7 @@ streamlit
 gspread
 oauth2client
 pandas
-streamlit-camera-qr
+streamlit-qr-reader
+
 
 
