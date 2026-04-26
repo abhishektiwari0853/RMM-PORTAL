@@ -1,14 +1,15 @@
-import streamlit as st
+
+  import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from datetime import datetime
-from streamlit_qr_scanner import streamlit_qr_scanner
+from streamlit_camera_qr import camera_qr
 
 # --- 1. CONFIG ---
 st.set_page_config(page_title="RMM Inter College Portal", layout="wide")
 
-# --- 2. SECURITY (Admin Login) ---
+# --- 2. SECURITY ---
 def check_password():
     if "password_correct" not in st.session_state:
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
@@ -38,7 +39,6 @@ def get_sheet_connection():
         else:
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         client = gspread.authorize(creds)
-        # Apni Sheet ID yahan check kar lena ek baar
         return client.open_by_key("14tEcfJ6j9hVZ76_69rkAoTZC0MpxdtlXemYcl8oacmI").sheet1
     except Exception as e:
         st.error(f"Database Connection Error: {e}")
@@ -52,7 +52,6 @@ def mark_attendance_logic(student_id):
         today_date = datetime.now().strftime("%d-%m-%Y")
         headers = sheet.row_values(1)
         
-        # Column Check or Create
         if today_date not in headers:
             new_col_index = len(headers) + 1
             sheet.update_cell(1, new_col_index, today_date)
@@ -80,16 +79,14 @@ if st.sidebar.button("Logout"):
 # --- FEATURE 1: ATTENDANCE ---
 if choice == "Attendance":
     st.subheader("📝 Attendance System")
-    tabs = st.tabs(["📷 Ultra Fast Scanner", "⌨️ Manual Entry"])
+    tabs = st.tabs(["📷 QR Scanner", "⌨️ Manual Entry"])
     
     with tabs[0]:
-        st.info("Scanner use karein. Ye 100% detect karega.")
-        # Client-side scanner (Browser level)
-        qr_code = streamlit_qr_scanner(key='attendance_scanner')
+        st.info("Scanner use karein. QR ko camera ke samne laayein.")
+        qr_data = camera_qr(key='attendance_scanner')
 
-        if qr_code:
-            # ID Extract Logic (URL handle karne ke liye)
-            res_id = qr_code.split('id=')[-1].strip().upper() if 'id=' in qr_code else qr_code.strip().upper()
+        if qr_data:
+            res_id = qr_data.split('id=')[-1].strip().upper() if 'id=' in qr_data else qr_data.strip().upper()
             st.success(f"🎯 Detected ID: **{res_id}**")
             
             if st.button(f"Confirm Attendance for {res_id}"):
@@ -121,7 +118,7 @@ elif choice == "Fees Management":
         if st.form_submit_button("Update Fees"):
             try:
                 cell = sheet.find(f_id)
-                # Column 8 as per your previous requirement
+                # Column 8 for fees
                 sheet.update_cell(cell.row, 8, f"{amt} ({month})")
                 st.success(f"✅ {f_id} ki Fees Update ho gayi!")
             except:
@@ -137,7 +134,7 @@ elif choice == "Search Student Info":
             df = pd.DataFrame(data[1:], columns=data[0])
             res = df[df.iloc[:, 0].str.upper() == search_id]
             if not res.empty:
-                st.table(res) # Table format for better view
+                st.dataframe(res, use_container_width=True)
             else:
                 st.warning("❌ Koi record nahi mila.")
         except Exception as e:
