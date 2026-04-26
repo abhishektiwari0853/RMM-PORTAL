@@ -1,6 +1,6 @@
 streamlit
 gspread
 oauth2client
-pandas
 opencv-python-headless
 pyzbar
+numpy
