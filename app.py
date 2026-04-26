@@ -3,7 +3,9 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from datetime import datetime
-from streamlit_qr_reader import streamlit_qr_reader
+import cv2
+import numpy as np
+from pyzbar.pyzbar import decode
 
 # --- 1. CONFIG ---
 st.set_page_config(page_title="RMM Inter College Portal", layout="wide")
@@ -33,14 +35,12 @@ def get_sheet_connection():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
         else:
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-        client = gspread.authorize(creds)
-        return client.open_by_key("14tEcfJ6j9hVZ76_69rkAoTZC0MpxdtlXemYcl8oacmI").sheet1
+        return gspread.authorize(creds).open_by_key("14tEcfJ6j9hVZ76_69rkAoTZC0MpxdtlXemYcl8oacmI").sheet1
     except Exception as e:
-        st.error(f"Database Error: {e}")
+        st.error(f"Sheet Connection Error: {e}")
         return None
 
 sheet = get_sheet_connection()
@@ -51,15 +51,13 @@ def mark_attendance_logic(student_id):
         today_date = datetime.now().strftime("%d-%m-%Y")
         headers = sheet.row_values(1)
         
-        # Column management
         if today_date not in headers:
-            new_col = len(headers) + 1
-            sheet.update_cell(1, new_col, today_date)
-            col_idx = new_col
+            col_idx = len(headers) + 1
+            sheet.update_cell(1, col_idx, today_date)
         else:
             col_idx = headers.index(today_date) + 1
         
-        cell = sheet.find(student_id)
+        cell = sheet.find(student_id.upper())
         if cell:
             sheet.update_cell(cell.row, col_idx, "P")
             return True, today_date
@@ -81,23 +79,28 @@ if choice == "Attendance":
     tabs = st.tabs(["📷 QR Scanner", "⌨️ Manual Entry"])
     
     with tabs[0]:
-        st.info("Scanner use karein. QR ko samne laayein.")
-        # Naya stable scanner
-        qr_code = streamlit_qr_reader(key='qr_scanner')
-
-        if qr_code:
-            # ID Extract Logic
-            s_id = qr_code.split('id=')[-1].strip().upper() if 'id=' in qr_code else qr_code.strip().upper()
-            st.success(f"🎯 Detected: **{s_id}**")
+        img_file = st.camera_input("Student ka QR Scan Karein")
+        if img_file:
+            # QR Process karein
+            file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
+            opencv_img = cv2.imdecode(file_bytes, 1)
+            decoded_objects = decode(opencv_img)
             
-            if st.button(f"Confirm Present for {s_id}"):
-                with st.spinner("Sheet Update ho rahi hai..."):
-                    success, msg = mark_attendance_logic(s_id)
-                    if success:
-                        st.success(f"✅ {s_id} ki attendance lag gayi!")
-                        st.balloons()
-                    else:
-                        st.error(f"❌ Error: {msg}")
+            if decoded_objects:
+                qr_data = decoded_objects[0].data.decode("utf-8")
+                res_id = qr_data.split('id=')[-1].strip().upper() if 'id=' in qr_data else qr_data.strip().upper()
+                st.success(f"🎯 Detected ID: **{res_id}**")
+                
+                if st.button(f"Mark Present for {res_id}"):
+                    with st.spinner("Sheet update ho rahi hai..."):
+                        success, msg = mark_attendance_logic(res_id)
+                        if success:
+                            st.success(f"✅ {res_id} ki attendance lag gayi!")
+                            st.balloons()
+                        else:
+                            st.error(f"❌ Error: {msg}")
+            else:
+                st.warning("QR Code saaf nahi dikh raha, fir se koshish karein.")
 
     with tabs[1]:
         with st.form("manual"):
