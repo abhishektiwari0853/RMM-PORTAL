@@ -24,30 +24,35 @@ if not check_password(): st.stop()
 
 # --- 3. DATABASE CONNECTION ---
 @st.cache_resource
-def get_workbook():
+def get_sheets_data():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         if "gcp_service_account" in st.secrets:
             creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
         else:
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
+        
         client = gspread.authorize(creds)
-        # Nayi file ka naam 'CLASS 7TH' use kar rahe hain
-        return client.open("CLASS 7TH")
+        # Nayi file 'CLASS 7TH' open karein
+        wb = client.open("CLASS 7TH")
+        
+        # Teeno sheets load karein
+        master = wb.worksheet("Master_Data")
+        attendance = wb.worksheet("Attendance")
+        fees = wb.worksheet("Fees_Data")
+        
+        return master, attendance, fees
     except Exception as e:
-        st.error(f"Sheet nahi mili: {e}")
-        return None
+        st.error(f"❌ Connection Error: {e}")
+        return None, None, None
 
-wb = get_workbook()
+# Variables ko load karein
+master_sheet, attendance_sheet, fees_sheet = get_sheets_data()
 
-if wb:
-    try:
-        master_sheet = wb.worksheet("Master_Data")
-        attendance_sheet = wb.worksheet("Attendance")
-        fees_sheet = wb.worksheet("Fees_Data")
-    except Exception as e:
-        st.error(f"Worksheet Error: {e}. Check karein ki Tabs ke naam 'Master_Data', 'Attendance', aur 'Fees_Data' hi hain.")
-        st.stop()
+# Check agar database nahi mila toh app stop karein
+if master_sheet is None:
+    st.warning("⚠️ Google Sheet connect nahi ho payi. Check karein ki 'CLASS 7TH' file shared hai aur Tabs ke naam sahi hain.")
+    st.stop()
 
 # --- 4. UI ---
 st.title("🏫 RAM MURTI MISHRA INTER COLLEGE")
@@ -91,7 +96,7 @@ elif choice == "Fees Jama Karein":
                 master_cell = master_sheet.find(f_id)
                 if master_cell:
                     current_data = master_sheet.row_values(master_cell.row)
-                    # TOTAL_FEES_PAID Column G (index 7) par hai
+                    # TOTAL_FEES_PAID Column G (index 7)
                     old_total = int(current_data[6]) if len(current_data) >= 7 and str(current_data[6]).isdigit() else 0
                     new_total = old_total + amt
                     
