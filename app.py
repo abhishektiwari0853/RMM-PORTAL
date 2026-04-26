@@ -33,12 +33,9 @@ def get_sheets_data():
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         
         client = gspread.authorize(creds)
-        
-        # ID jo aapne di thi
         sheet_id = "1fiAOXJUCMk_dlKfUbW6syEEHRREaMAnNaDIe0X0wboo"
         wb = client.open_by_key(sheet_id)
         
-        # Tabs load karein
         master = wb.worksheet("Master_Data")
         attendance = wb.worksheet("Attendance")
         fees = wb.worksheet("Fees_Data")
@@ -51,7 +48,6 @@ def get_sheets_data():
 master_sheet, attendance_sheet, fees_sheet = get_sheets_data()
 
 if master_sheet is None:
-    st.warning("⚠️ Sheet connect nahi hui. Check karein: Sheet shared hai? Tabs ke naam sahi hain?")
     st.stop()
 
 # --- 4. UI ---
@@ -60,15 +56,13 @@ choice = st.sidebar.radio("Main Menu", ["Haziri (Attendance)", "Fees Jama Karein
 
 # --- FEATURE 1: ATTENDANCE ---
 if choice == "Haziri (Attendance)":
-    st.subheader("📝 Daily Attendance (Manual Entry)")
-    s_id = st.text_input("Student ID (e.g. RMEC001)").upper()
-    
+    st.subheader("📝 Daily Attendance")
+    s_id = st.text_input("Student ID").upper()
     if st.button("Mark Present"):
         if s_id:
             try:
                 today = datetime.now().strftime("%d-%m-%Y")
                 headers = attendance_sheet.row_values(1)
-                
                 if today not in headers:
                     col_idx = len(headers) + 1
                     attendance_sheet.update_cell(1, col_idx, today)
@@ -78,73 +72,79 @@ if choice == "Haziri (Attendance)":
                 cell = attendance_sheet.find(s_id)
                 if cell:
                     attendance_sheet.update_cell(cell.row, col_idx, "P")
-                    st.success(f"✅ {s_id} ki Haziri lag gayi!")
+                    st.success(f"✅ {s_id} marked Present!")
                 else:
-                    st.error("❌ Ye ID Master List mein nahi mili!")
+                    st.error("❌ ID nahi mili!")
             except Exception as e: st.error(f"Error: {e}")
 
-# --- FEATURE 2: FEES (LOGIC AS PER YOUR PHOTO) ---
+# --- FEATURE 2: FEES (FIXED MAPPING FOR COLUMN G) ---
 elif choice == "Fees Jama Karein":
-    st.subheader("💰 Fees Collection System")
+    st.subheader("💰 Fees Collection")
     with st.form("fees_form"):
         f_id = st.text_input("Student ID").upper()
-        amt = st.number_input("Amount (Rupees)", min_value=0)
+        amt = st.number_input("Amount", min_value=0)
         month = st.selectbox("Month", ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"])
         
         if st.form_submit_button("Fees Update Karein"):
             try:
                 master_cell = master_sheet.find(f_id)
                 if master_cell:
-                    current_data = master_sheet.row_values(master_cell.row)
+                    row_data = master_sheet.row_values(master_cell.row)
                     
-                    # Aapki photo ke hisab se TOTAL FEES PAID Column G (Index 7) par hai
-                    # current_data[6] matlab Column G
-                    try:
-                        old_total = int(current_data[6]) if len(current_data) >= 7 and str(current_data[6]).strip().isdigit() else 0
-                    except:
-                        old_total = 0
-                        
-                    new_total = old_total + amt
+                    # Column G (Total Fees) is index 6 in Python
+                    current_fees = 0
+                    if len(row_data) >= 7:
+                        val = str(row_data[6]).strip()
+                        current_fees = int(val) if val.isdigit() else 0
                     
-                    # Update Total in Column G (Column 7)
+                    new_total = current_fees + amt
+                    
+                    # Update Column G (7th Column)
                     master_sheet.update_cell(master_cell.row, 7, str(new_total))
-                    
                     # Log in Fees_Data tab
                     fees_sheet.append_row([f_id, amt, month, datetime.now().strftime("%d-%m-%Y %H:%M")])
                     
-                    st.success(f"✅ ₹{amt} Jama! Naya Total: ₹{new_total}")
+                    st.success(f"✅ Fees Updated! New Total: ₹{new_total}")
                 else:
-                    st.error("❌ Student ID nahi mili.")
+                    st.error("❌ ID nahi mili.")
             except Exception as e: st.error(f"Error: {e}")
 
-# --- FEATURE 3: SEARCH (PHOTO MAPPING) ---
+# --- FEATURE 3: SEARCH (FIXED MAPPING FOR BLANK NODE) ---
 elif choice == "Student Khojein":
-    st.subheader("🔍 Student Record & History")
-    search_id = st.text_input("Student ID Daalein").upper()
+    st.subheader("🔍 Student Record")
+    search_id = st.text_input("Student ID").upper()
     
     if st.button("Search Details"):
         try:
-            all_students = master_sheet.get_all_values()
-            student_row = next((r for r in all_students if r[0].upper() == search_id), None)
+            records = master_sheet.get_all_values()
+            student_row = next((r for r in records if r[0].upper() == search_id), None)
             
             if student_row:
-                st.info(f"### Student: {student_row[1]}") # Column B
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Roll No:** {student_row[2]}") # Column C
-                    st.write(f"**Father's Name:** {student_row[3]}") # Column D
-                with col2:
-                    st.write(f"**Mobile:** {student_row[5] if len(student_row)>5 else 'N/A'}") # Column F
-                    st.markdown(f"### 💰 Total Fees Paid: ₹{student_row[6] if len(student_row)>6 else '0'}") # Column G
+                # Mapping as per your sheet photo:
+                # A:0=ID, B:1=Name, C:2=Roll, D:3=Father, E:4=Node(Blank), F:5=Mobile, G:6=TotalFees
+                name = student_row[1] if len(student_row) > 1 else "N/A"
+                roll = student_row[2] if len(student_row) > 2 else "N/A"
+                father = student_row[3] if len(student_row) > 3 else "N/A"
+                mobile = student_row[5] if len(student_row) > 5 else "N/A" 
+                total_fees = student_row[6] if len(student_row) > 6 else "0" 
+                
+                st.info(f"### Student: {name}")
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.write(f"**Roll No:** {roll}")
+                    st.write(f"**Father's Name:** {father}")
+                with c2:
+                    st.write(f"**Mobile:** {mobile}")
+                    st.markdown(f"### 💰 Total Fees Paid: ₹{total_fees}")
                 
                 st.divider()
-                st.write("#### Recent Transactions")
+                st.write("#### Fees History (Last Transactions)")
                 all_fees = fees_sheet.get_all_values()
-                history = [r for r in all_fees if r[0].upper() == search_id]
-                if history:
-                    st.table(history)
+                hist = [r for r in all_fees if r[0].upper() == search_id]
+                if hist:
+                    st.table(hist)
                 else:
-                    st.write("No fees records found.")
+                    st.write("No history found.")
             else:
-                st.warning("ID galat hai.")
-        except Exception as e: st.error(f"Error: {e}")
+                st.warning("ID not found.")
+        except Exception as e: st.error(e)
