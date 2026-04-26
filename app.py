@@ -32,19 +32,28 @@ def get_workbook():
         else:
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         client = gspread.authorize(creds)
-        return client.open_by_key("14tEcfJ6j9hVZ76_69rkAoTZC0MpxdtlXemYcl8oacmI")
-    except: return None
+        # Nayi file ka naam 'CLASS 7TH' use kar rahe hain
+        return client.open("CLASS 7TH")
+    except Exception as e:
+        st.error(f"Sheet nahi mili: {e}")
+        return None
 
 wb = get_workbook()
-master_sheet = wb.worksheet("Master_Data")
-attendance_sheet = wb.worksheet("Attendance")
-fees_sheet = wb.worksheet("Fees_Data")
+
+if wb:
+    try:
+        master_sheet = wb.worksheet("Master_Data")
+        attendance_sheet = wb.worksheet("Attendance")
+        fees_sheet = wb.worksheet("Fees_Data")
+    except Exception as e:
+        st.error(f"Worksheet Error: {e}. Check karein ki Tabs ke naam 'Master_Data', 'Attendance', aur 'Fees_Data' hi hain.")
+        st.stop()
 
 # --- 4. UI ---
 st.title("🏫 RAM MURTI MISHRA INTER COLLEGE")
 choice = st.sidebar.radio("Main Menu", ["Haziri (Attendance)", "Fees Jama Karein", "Student Khojein"])
 
-# --- FEATURE 1: ATTENDANCE (NO SCANNER) ---
+# --- FEATURE 1: ATTENDANCE ---
 if choice == "Haziri (Attendance)":
     st.subheader("📝 Daily Attendance (Manual Entry)")
     s_id = st.text_input("Student ID Daalein (e.g. RMM001)").upper()
@@ -55,7 +64,6 @@ if choice == "Haziri (Attendance)":
                 today = datetime.now().strftime("%d-%m-%Y")
                 headers = attendance_sheet.row_values(1)
                 
-                # Check/Create Date Column
                 if today not in headers:
                     col_idx = len(headers) + 1
                     attendance_sheet.update_cell(1, col_idx, today)
@@ -80,34 +88,28 @@ elif choice == "Fees Jama Karein":
         
         if st.form_submit_button("Fees Update Karein"):
             try:
-                # 1. Master_Data mein ID dhundo aur Total Update karo
                 master_cell = master_sheet.find(f_id)
                 if master_cell:
-                    # Current total uthao (Column G = index 7)
                     current_data = master_sheet.row_values(master_cell.row)
-                    # Agar G column khali hai toh 0 pakdo
-                    old_total = int(current_data[6]) if len(current_data) >= 7 and current_data[6].isdigit() else 0
+                    # TOTAL_FEES_PAID Column G (index 7) par hai
+                    old_total = int(current_data[6]) if len(current_data) >= 7 and str(current_data[6]).isdigit() else 0
                     new_total = old_total + amt
                     
-                    # Master sheet mein total update karo
                     master_sheet.update_cell(master_cell.row, 7, str(new_total))
-                    
-                    # 2. Fees_Log mein record daalo
                     fees_sheet.append_row([f_id, amt, month, datetime.now().strftime("%d-%m-%Y %H:%M")])
                     
                     st.success(f"✅ ₹{amt} Jama ho gaye! Naya Total: ₹{new_total}")
                 else:
-                    st.error("❌ Student ID nahi mili. Pehle Master Data mein add karein.")
+                    st.error("❌ Student ID nahi mili.")
             except Exception as e: st.error(f"Error: {e}")
 
-# --- FEATURE 3: SEARCH (FULL INFO) ---
+# --- FEATURE 3: SEARCH ---
 elif choice == "Student Khojein":
     st.subheader("🔍 Student Record & Fees History")
     search_id = st.text_input("Student ID Daalein").upper()
     
     if st.button("Search Details"):
         try:
-            # Master Info
             all_students = master_sheet.get_all_values()
             student_row = next((r for r in all_students if r[0].upper() == search_id), None)
             
@@ -122,7 +124,6 @@ elif choice == "Student Khojein":
                     st.write(f"**Mobile:** {student_row[4] if len(student_row)>4 else 'N/A'}")
                     st.markdown(f"### 💰 Total Fees Paid: ₹{student_row[6] if len(student_row)>6 else '0'}")
                 
-                # Fees History
                 st.divider()
                 st.write("#### Recent Fees Transactions")
                 all_fees = fees_sheet.get_all_values()
