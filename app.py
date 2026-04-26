@@ -36,10 +36,9 @@ def get_sheets_data():
         sheet_id = "1fiAOXJUCMk_dlKfUbW6syEEHRREaMAnNaDIe0X0wboo"
         wb = client.open_by_key(sheet_id)
         
-        # Tabs load karein
         master = wb.worksheet("Master_Data")
         attendance = wb.worksheet("Attendance")
-        fees = wb.worksheet("Fees_Data") # Check karein ye naam exact yahi hai na?
+        fees = wb.worksheet("Fees_Data")
         
         return master, attendance, fees
     except Exception as e:
@@ -55,7 +54,7 @@ if master_sheet is None:
 st.title("🏫 RAM MURTI MISHRA INTER COLLEGE")
 choice = st.sidebar.radio("Main Menu", ["Haziri (Attendance)", "Fees Jama Karein", "Student Khojein"])
 
-# --- FEATURE 1: ATTENDANCE ---
+# --- ATTENDANCE ---
 if choice == "Haziri (Attendance)":
     st.subheader("📝 Daily Attendance")
     s_id = st.text_input("Student ID").upper()
@@ -78,7 +77,7 @@ if choice == "Haziri (Attendance)":
                     st.error("❌ ID nahi mili!")
             except Exception as e: st.error(f"Error: {e}")
 
-# --- FEATURE 2: FEES (FIXED SYNC LOGIC) ---
+# --- FEES (FORCED DOUBLE UPDATE) ---
 elif choice == "Fees Jama Karein":
     st.subheader("💰 Fees Collection")
     with st.form("fees_form"):
@@ -89,37 +88,32 @@ elif choice == "Fees Jama Karein":
         if st.form_submit_button("Fees Update Karein"):
             if f_id and amt > 0:
                 try:
-                    # 1. Pehle Student ko Master Data mein dhundo
+                    # STEP 1: Master Data Update
                     master_cell = master_sheet.find(f_id)
                     if master_cell:
                         row_data = master_sheet.row_values(master_cell.row)
-                        
-                        # Column G (Total Fees) update
                         current_fees = 0
                         if len(row_data) >= 7:
                             val = str(row_data[6]).strip()
                             current_fees = int(val) if val.isdigit() else 0
                         
                         new_total = current_fees + amt
-                        
-                        # Pehle Master Data update karo
                         master_sheet.update_cell(master_cell.row, 7, str(new_total))
                         
-                        # 2. AB FEES_DATA MEIN LOG DAALO (Sync Check)
+                        # STEP 2: Fees_Data Update (Try Insert)
                         try:
                             timestamp = datetime.now().strftime("%d-%m-%Y %H:%M")
-                            fees_sheet.append_row([f_id, amt, month, timestamp])
-                            st.success(f"✅ Sab sahi hai! Master aur History dono update ho gaye. Naya Total: ₹{new_total}")
-                        except Exception as fee_err:
-                            st.error(f"⚠️ Master update ho gaya par Fees_Data mein entry fail hui: {fee_err}")
+                            # Insert row at the end
+                            fees_sheet.insert_row([f_id, amt, month, timestamp], index=2) 
+                            st.success(f"✅ Master aur History dono update ho gaye! Naya Total: ₹{new_total}")
+                        except Exception as fee_e:
+                            st.warning(f"Master update ho gaya par History fail hui: {fee_e}")
                     else:
                         st.error("❌ ID Master List mein nahi mili!")
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
-            else:
-                st.warning("ID aur Amount bharna zaroori hai.")
 
-# --- FEATURE 3: SEARCH ---
+# --- SEARCH ---
 elif choice == "Student Khojein":
     st.subheader("🔍 Student Record")
     search_id = st.text_input("Student ID").upper()
