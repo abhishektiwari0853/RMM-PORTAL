@@ -1,35 +1,31 @@
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import pandas as pd
 from datetime import datetime
 import cv2
 import numpy as np
 from pyzbar.pyzbar import decode
 
 # --- 1. CONFIG ---
-st.set_page_config(page_title="RMM Inter College Portal", layout="wide")
+st.set_page_config(page_title="RMM Portal", layout="wide")
 
 # --- 2. SECURITY ---
 def check_password():
     if "password_correct" not in st.session_state:
         st.markdown("<h2 style='text-align: center;'>Admin Login</h2>", unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([1,1,1])
-        with col2:
-            pwd = st.text_input("Password Daalo", type="password")
-            if st.button("Login"):
-                if pwd == "RMM2014":
-                    st.session_state["password_correct"] = True
-                    st.rerun()
-                else:
-                    st.error("❌ Galat Password!")
+        pwd = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if pwd == "RMM2014":
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("❌ Galat Password!")
         return False
     return True
 
-if not check_password():
-    st.stop()
+if not check_password(): st.stop()
 
-# --- 3. DATABASE CONNECTION ---
+# --- 3. DATABASE ---
 @st.cache_resource
 def get_sheet_connection():
     try:
@@ -39,102 +35,94 @@ def get_sheet_connection():
         else:
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         return gspread.authorize(creds).open_by_key("14tEcfJ6j9hVZ76_69rkAoTZC0MpxdtlXemYcl8oacmI").sheet1
-    except Exception as e:
-        st.error(f"Sheet Connection Error: {e}")
-        return None
+    except: return None
 
 sheet = get_sheet_connection()
 
-# --- 4. ATTENDANCE LOGIC ---
+# --- 4. LOGIC ---
 def mark_attendance_logic(student_id):
     try:
-        today_date = datetime.now().strftime("%d-%m-%Y")
+        today = datetime.now().strftime("%d-%m-%Y")
         headers = sheet.row_values(1)
-        
-        if today_date not in headers:
+        if today not in headers:
             col_idx = len(headers) + 1
-            sheet.update_cell(1, col_idx, today_date)
+            sheet.update_cell(1, col_idx, today)
         else:
-            col_idx = headers.index(today_date) + 1
+            col_idx = headers.index(today) + 1
         
         cell = sheet.find(student_id.upper())
         if cell:
             sheet.update_cell(cell.row, col_idx, "P")
-            return True, today_date
-        return False, "ID Database mein nahi mili!"
-    except Exception as e:
-        return False, str(e)
+            return True, today
+        return False, "ID Not Found"
+    except Exception as e: return False, str(e)
 
 # --- 5. UI ---
-st.markdown("<h1 style='text-align: center; color: #1a73e8;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
-st.divider()
-
-choice = st.sidebar.radio("Main Menu", ["Attendance", "Fees Management", "Search Student Info"])
-if st.sidebar.button("Logout"):
-    del st.session_state["password_correct"]
-    st.rerun()
+st.title("RAM MURTI MISHRA INTER COLLEGE")
+choice = st.sidebar.radio("Menu", ["Attendance", "Fees Management", "Search Student"])
 
 if choice == "Attendance":
-    st.subheader("📝 Attendance System")
-    tabs = st.tabs(["📷 QR Scanner", "⌨️ Manual Entry"])
-    
-    with tabs[0]:
-        img_file = st.camera_input("Student ka QR Scan Karein")
-        if img_file:
-            # QR Process karein
-            file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
-            opencv_img = cv2.imdecode(file_bytes, 1)
-            decoded_objects = decode(opencv_img)
-            
-            if decoded_objects:
-                qr_data = decoded_objects[0].data.decode("utf-8")
-                res_id = qr_data.split('id=')[-1].strip().upper() if 'id=' in qr_data else qr_data.strip().upper()
-                st.success(f"🎯 Detected ID: **{res_id}**")
-                
-                if st.button(f"Mark Present for {res_id}"):
-                    with st.spinner("Sheet update ho rahi hai..."):
-                        success, msg = mark_attendance_logic(res_id)
-                        if success:
-                            st.success(f"✅ {res_id} ki attendance lag gayi!")
-                            st.balloons()
-                        else:
-                            st.error(f"❌ Error: {msg}")
-            else:
-                st.warning("QR Code saaf nahi dikh raha, fir se koshish karein.")
-
-    with tabs[1]:
-        with st.form("manual"):
-            m_id = st.text_input("Student ID Enter Karein").upper()
-            if st.form_submit_button("Attendance Lagao"):
-                s, m = mark_attendance_logic(m_id)
-                if s: st.success(f"✅ {m_id} Present Mark!")
-                else: st.error(m)
+    st.subheader("📝 Attendance")
+    t1, t2 = st.tabs(["📷 QR Scanner", "⌨️ Manual Entry"])
+    with t1:
+        img = st.camera_input("Scan QR")
+        if img:
+            file_bytes = np.asarray(bytearray(img.read()), dtype=np.uint8)
+            decoded = decode(cv2.imdecode(file_bytes, 1))
+            if decoded:
+                res_id = decoded[0].data.decode("utf-8").split('id=')[-1].strip().upper()
+                st.success(f"Detected: {res_id}")
+                if st.button(f"Mark Present {res_id}"):
+                    s, m = mark_attendance_logic(res_id)
+                    if s: st.success("✅ Done!"); st.balloons()
+                    else: st.error(m)
+    with t2:
+        m_id = st.text_input("Enter ID").upper()
+        if st.button("Submit Attendance"):
+            s, m = mark_attendance_logic(m_id)
+            if s: st.success("✅ Done!")
+            else: st.error(m)
 
 elif choice == "Fees Management":
-    st.subheader("💰 Fees Deposit")
+    st.subheader("💰 Fees Update")
     with st.form("fees"):
-        f_id = st.text_input("Student ID").upper()
+        f_id = st.text_input("ID").upper()
         amt = st.number_input("Amount", min_value=0)
         month = st.selectbox("Month", ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"])
-        if st.form_submit_button("Update Fees"):
+        if st.form_submit_button("Update"):
             try:
                 cell = sheet.find(f_id)
                 sheet.update_cell(cell.row, 8, f"{amt} ({month})")
-                st.success("✅ Fees Update Ho Gayi!")
-            except:
-                st.error("❌ Student ID nahi mili!")
+                st.success("✅ Fees Updated!")
+            except: st.error("ID Not Found")
 
-elif choice == "Search Student Info":
-    st.subheader("🔍 Search Record")
-    search_id = st.text_input("Enter ID:").upper()
-    if st.button("Search"):
+elif choice == "Search Student":
+    st.subheader("🔍 Student Information")
+    s_id = st.text_input("Enter Student ID").upper()
+    if st.button("Search Details"):
         try:
-            data = sheet.get_all_values()
-            df = pd.DataFrame(data[1:], columns=data[0])
-            res = df[df.iloc[:, 0].str.upper() == search_id]
-            if not res.empty:
-                st.dataframe(res, use_container_width=True)
+            all_data = sheet.get_all_values()
+            headers = all_data[0]
+            student_row = None
+            for row in all_data[1:]:
+                if row[0].upper() == s_id:
+                    student_row = row
+                    break
+            
+            if student_row:
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Name:** {student_row[1]}")
+                    st.write(f"**Father's Name:** {student_row[3]}")
+                with col2:
+                    st.write(f"**Mobile:** {student_row[5]}")
+                    st.write(f"**Fees Status:** {student_row[7] if len(student_row)>7 else 'N/A'}")
+                
+                # Full Record in Table
+                st.divider()
+                st.write("### Full Record")
+                st.table([headers, student_row])
             else:
-                st.warning("❌ Record nahi mila.")
+                st.warning("❌ Is ID ka koi student nahi mila.")
         except Exception as e:
             st.error(f"Error: {e}")
