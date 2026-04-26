@@ -33,10 +33,12 @@ def get_sheets_data():
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         
         client = gspread.authorize(creds)
-        # Nayi file 'CLASS 7TH' open karein
-        wb = client.open("CLASS 7TH")
         
-        # Teeno sheets load karein
+        # Aapki Sheet ID jo aapne bheji hai
+        sheet_id = "1fiAOXJUCMk_dlKfUbW6syEEHRREaMAnNaDIe0X0wboo"
+        wb = client.open_by_key(sheet_id)
+        
+        # Tabs load karein
         master = wb.worksheet("Master_Data")
         attendance = wb.worksheet("Attendance")
         fees = wb.worksheet("Fees_Data")
@@ -46,12 +48,12 @@ def get_sheets_data():
         st.error(f"❌ Connection Error: {e}")
         return None, None, None
 
-# Variables ko load karein
+# Variables mein sheets ko pakadna
 master_sheet, attendance_sheet, fees_sheet = get_sheets_data()
 
-# Check agar database nahi mila toh app stop karein
+# Agar data nahi mila toh app yahi rok do
 if master_sheet is None:
-    st.warning("⚠️ Google Sheet connect nahi ho payi. Check karein ki 'CLASS 7TH' file shared hai aur Tabs ke naam sahi hain.")
+    st.warning("⚠️ Google Sheet connect nahi ho payi. Check karein ki apne Service Account Email ko Sheet mein 'Editor' banaya hai.")
     st.stop()
 
 # --- 4. UI ---
@@ -69,6 +71,7 @@ if choice == "Haziri (Attendance)":
                 today = datetime.now().strftime("%d-%m-%Y")
                 headers = attendance_sheet.row_values(1)
                 
+                # Check/Create Date Column
                 if today not in headers:
                     col_idx = len(headers) + 1
                     attendance_sheet.update_cell(1, col_idx, today)
@@ -100,7 +103,9 @@ elif choice == "Fees Jama Karein":
                     old_total = int(current_data[6]) if len(current_data) >= 7 and str(current_data[6]).isdigit() else 0
                     new_total = old_total + amt
                     
+                    # Update Master Total
                     master_sheet.update_cell(master_cell.row, 7, str(new_total))
+                    # Log in Fees_Data
                     fees_sheet.append_row([f_id, amt, month, datetime.now().strftime("%d-%m-%Y %H:%M")])
                     
                     st.success(f"✅ ₹{amt} Jama ho gaye! Naya Total: ₹{new_total}")
