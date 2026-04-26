@@ -2,4 +2,3 @@ streamlit
 gspread
 oauth2client
 pandas
-streamlit-qr-barcode-scanner
