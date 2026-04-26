@@ -50,15 +50,19 @@ master_sheet, attendance_sheet, fees_sheet = get_sheets_data()
 if master_sheet is None:
     st.stop()
 
-# --- 4. UI LOGO & TITLE ---
-# Sidebar mein logo dikhane ke liye
-with st.sidebar:
+# --- 4. MAIN PAGE LOGO & TITLE ---
+# Logo ko center karne ke liye columns ka use
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
     try:
-        st.image("School_logo.png", use_container_width=True)
+        st.image("School_logo.png", width=200)
     except:
-        st.caption("📷 Logo: School_logo.png not found")
+        st.warning("⚠️ Logo file 'School_logo.png' nahi mili.")
 
-st.title("🏫 RAM MURTI MISHRA INTER COLLEGE")
+st.markdown("<h1 style='text-align: center;'>🏫 RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
+st.divider()
+
+# --- SIDEBAR MENU ---
 choice = st.sidebar.radio("Main Menu", ["Haziri (Attendance)", "Fees Jama Karein", "Student Khojein"])
 
 # --- FEATURE 1: ATTENDANCE ---
@@ -99,7 +103,7 @@ elif choice == "Fees Jama Karein":
                     if master_cell:
                         row_data = master_sheet.row_values(master_cell.row)
                         
-                        # Column G (Index 6) handling
+                        # Column G (Index 6)
                         current_fees = 0
                         if len(row_data) >= 7:
                             val = str(row_data[6]).strip()
@@ -110,7 +114,7 @@ elif choice == "Fees Jama Karein":
                         # Update Master (Column G)
                         master_sheet.update_cell(master_cell.row, 7, str(new_total))
                         
-                        # Insert into Fees_Data History (at top)
+                        # Insert into Fees_Data History
                         timestamp = datetime.now().strftime("%d-%m-%Y %H:%M")
                         fees_sheet.insert_row([f_id, amt, month, timestamp], index=2)
                         
@@ -119,7 +123,7 @@ elif choice == "Fees Jama Karein":
                         st.error("❌ Student ID nahi mili!")
                 except Exception as e: st.error(f"Error: {e}")
 
-# --- FEATURE 3: SEARCH (WITH ADDRESS & PHOTO MAPPING) ---
+# --- FEATURE 3: SEARCH ---
 elif choice == "Student Khojein":
     st.subheader("🔍 Student Record")
     search_id = st.text_input("Student ID").upper()
@@ -130,7 +134,6 @@ elif choice == "Student Khojein":
             student_row = next((r for r in records if r[0].upper() == search_id), None)
             
             if student_row:
-                # SAFE MAPPING: A:0, B:1, C:2, D:3, E:4(Blank), F:5, G:6, H:7
                 name = student_row[1] if len(student_row) > 1 else "N/A"
                 roll = student_row[2] if len(student_row) > 2 else "N/A"
                 father = student_row[3] if len(student_row) > 3 else "N/A"
