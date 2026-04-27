@@ -4,10 +4,14 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import pandas as pd
 
-# --- 1. CONFIGURATION ---
-st.set_page_config(page_title="RMM School Portal", page_icon="🏫", layout="wide")
+# -----------------------------
+# 1. CONFIGURATION
+# -----------------------------
+st.set_page_config(page_title="RMM Administrative Portal", page_icon="🏫", layout="wide")
 
-# --- 2. DUAL-LAYER SECURITY ---
+# -----------------------------
+# 2. DUAL-LAYER SECURITY
+# -----------------------------
 def check_main_password():
     if "main_auth" not in st.session_state:
         st.markdown("<h2 style='text-align: center;'>School Portal Login</h2>", unsafe_allow_html=True)
@@ -17,15 +21,16 @@ def check_main_password():
                 st.session_state["main_auth"] = True
                 st.rerun()
             else:
-                st.error("Invalid Portal Password")
+                st.error("Invalid Password")
         return False
     return True
 
 def check_office_access():
+    """Returns True only if the Office PIN has been entered."""
     if "office_auth" not in st.session_state:
-        st.warning("🔒 Restricted: Office PIN Required to access financial data.")
-        pin = st.text_input("Enter Office PIN", type="password", key="off_pin")
-        if st.button("Unlock Office Sections"):
+        st.warning("Restricted: Office PIN required for financial operations.")
+        pin = st.text_input("Enter Office PIN", type="password", key="office_pin")
+        if st.button("Unlock Office Desk"):
             if pin == "OFFICE786":
                 st.session_state["office_auth"] = True
                 st.rerun()
@@ -34,15 +39,23 @@ def check_office_access():
         return False
     return True
 
-if not check_main_password(): st.stop()
+if not check_main_password():
+    st.stop()
 
-# --- 3. DATABASE CONNECTION ---
+# -----------------------------
+# 3. DATABASE CONNECTION
+# -----------------------------
 @st.cache_resource
 def get_workbook():
     try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"
+        ]
         if "gcp_service_account" in st.secrets:
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                dict(st.secrets["gcp_service_account"]), scope
+            )
         else:
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         client = gspread.authorize(creds)
@@ -52,112 +65,193 @@ def get_workbook():
         return None
 
 wb = get_workbook()
-if wb is None: st.stop()
+if wb is None:
+    st.stop()
 
-# --- 4. SIDEBAR & NAVIGATION ---
-st.sidebar.header("RMM Admin Panel")
-selected_class = st.sidebar.selectbox("Select Class", ["7", "8", "9", "10", "11", "12"])
-menu = st.sidebar.radio("Navigation", ["Student Attendance", "Fee Collection", "Daily Cash Report", "Student Records"])
+# -----------------------------
+# 4. SIDEBAR & NAVIGATION
+# -----------------------------
+st.sidebar.header("Administration Panel")
+selected_class = st.sidebar.selectbox("Academic Class", ["7", "8", "9", "10", "11", "12"])
+menu = st.sidebar.radio("Navigation", [
+    "Student Attendance",
+    "Fee Collection",
+    "Daily Cash Report",
+    "Student Records"
+])
 
-# Security Buttons
+# Office lock button (visible only when office section is unlocked)
 if "office_auth" in st.session_state:
-    if st.sidebar.button("🔒 Lock Office Sections"):
+    if st.sidebar.button("Lock Office Sections"):
         del st.session_state["office_auth"]
         st.rerun()
 
-if st.sidebar.button("Logout System"):
+# Full logout
+if st.sidebar.button("Logout"):
     st.session_state.clear()
     st.rerun()
 
-st.markdown(f"<h1 style='text-align: center;'>RMM INTER COLLEGE - CLASS {selected_class}</h1>", unsafe_allow_html=True)
-st.divider()
-
-# DYNAMIC SHEET LOADING
+# -----------------------------
+# 5. LOAD CLASS SHEETS
+# -----------------------------
 try:
     master_sheet = wb.worksheet(f"Master_{selected_class}")
     attendance_sheet = wb.worksheet(f"Attendance_{selected_class}")
     fees_sheet = wb.worksheet(f"Fees_{selected_class}")
-except:
-    st.error(f"Error: Sheets for Class {selected_class} not found. Please check Google Sheets.")
+
+    # Build student list for dropdown (ID - Name)
+    all_records = master_sheet.get_all_records()
+    df_master = pd.DataFrame(all_records)
+    student_list = [
+        f"{row['Student ID']} - {row['Name']}"
+        for _, row in df_master.iterrows()
+    ]
+except Exception as e:
+    st.error("Classes sheets not found. Please ensure tabs exist: "
+             f"`Master_{selected_class}`, `Attendance_{selected_class}`, `Fees_{selected_class}`")
     st.stop()
 
-# --- MODULE 1: ATTENDANCE (Teacher Access) ---
+# -----------------------------
+# 6. BRANDING (Top Centre Logo)
+# -----------------------------
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    try:
+        st.image("School_logo.png", width=180)
+    except:
+        st.caption("School Logo not found")
+
+st.markdown("<h1 style='text-align: center;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center; color: gray;'>Administrative Management System</h4>", unsafe_allow_html=True)
+st.divider()
+
+# =============================
+# 7. MODULE 1 – ATTENDANCE
+# =============================
 if menu == "Student Attendance":
-    st.subheader("Daily Attendance Registry")
-    s_id = st.text_input("Enter Student ID").upper()
+    st.subheader(f"Daily Attendance – Class {selected_class}")
+    selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
+
     if st.button("Mark Present"):
-        if s_id:
+        if selected_student == "-- Select --":
+            st.warning("Please select a student first.")
+        else:
+            s_id = selected_student.split(" - ")[0]
             try:
                 today = datetime.now().strftime("%d-%m-%Y")
                 headers = attendance_sheet.row_values(1)
                 col_idx = headers.index(today) + 1 if today in headers else len(headers) + 1
-                if today not in headers: attendance_sheet.update_cell(1, col_idx, today)
-                
-                cell = attendance_sheet.find(s_id)
-                if cell:
-                    attendance_sheet.update_cell(cell.row, col_idx, "P")
-                    st.success(f"Student {s_id} marked Present for {today}")
-                else: st.error("ID not found in this class.")
-            except Exception as e: st.error(f"Error: {e}")
+                if today not in headers:
+                    attendance_sheet.update_cell(1, col_idx, today)
 
-# --- MODULE 2: FEE COLLECTION (Office PIN Required) ---
+                cell = attendance_sheet.find(s_id)
+                attendance_sheet.update_cell(cell.row, col_idx, "P")
+                st.success(f"Present marked for {selected_student} on {today}")
+            except Exception as e:
+                st.error(f"Update failed: {e}")
+
+# =============================
+# 8. MODULE 2 – FEE COLLECTION
+# =============================
 elif menu == "Fee Collection":
     if check_office_access():
-        st.subheader("Fee Counter")
-        f_id = st.text_input("Enter Student ID").upper()
-        if f_id:
-            try:
-                m_cell = master_sheet.find(f_id)
-                m_row = master_sheet.row_values(m_cell.row)
-                st.info(f"Student: {m_row[1]} | Father: {m_row[3]}")
-                
-                with st.form("fee_form", clear_on_submit=True):
-                    amt = st.number_input("Amount Received", min_value=0)
-                    month = st.selectbox("Month", ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"])
-                    mode = st.selectbox("Payment Mode", ["Cash", "Online", "Cheque"])
-                    if st.form_submit_button("Submit & Update Record"):
-                        # Update Master (Column G / Index 6)
-                        current_total = int(m_row[6]) if len(m_row) > 6 and str(m_row[6]).isdigit() else 0
-                        master_sheet.update_cell(m_cell.row, 7, str(current_total + amt))
-                        # Log History
-                        ts = datetime.now().strftime("%d-%m-%Y %H:%M")
-                        fees_sheet.insert_row([f_id, amt, month, ts, mode], index=2)
-                        st.success(f"Payment successful. New Total: ₹{current_total + amt}")
-            except: st.error("Student ID not found.")
+        st.subheader(f"Fee Counter – Class {selected_class}")
+        selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
 
-# --- MODULE 3: DAILY CASH REPORT (Office PIN Required) ---
+        if selected_student != "-- Select --":
+            s_id = selected_student.split(" - ")[0]
+            # Get current data from master
+            try:
+                m_cell = master_sheet.find(s_id)
+                m_row = master_sheet.row_values(m_cell.row)
+                current_fees = int(m_row[6]) if len(m_row) >= 7 and str(m_row[6]).isdigit() else 0
+                st.info(f"**Student:** {m_row[1]} | **Father:** {m_row[3]} | **Total Paid:** ₹{current_fees}")
+
+                with st.form("fee_form", clear_on_submit=True):
+                    amount = st.number_input("Amount Received", min_value=0)
+                    month = st.selectbox("Month", [
+                        "April","May","June","July","August","September",
+                        "October","November","December","January","February","March"
+                    ])
+                    payment_mode = st.selectbox("Payment Mode", ["Cash", "Online", "Cheque"])
+
+                    if st.form_submit_button("Process Payment"):
+                        # Update master (Column G = index 7)
+                        new_total = current_fees + amount
+                        master_sheet.update_cell(m_cell.row, 7, str(new_total))
+
+                        # Log into Fees sheet
+                        timestamp = datetime.now().strftime("%d-%m-%Y %H:%M")
+                        fees_sheet.insert_row(
+                            [s_id, amount, month, timestamp, payment_mode],
+                            index=2
+                        )
+                        st.success(f"Payment of ₹{amount} recorded. New Total: ₹{new_total}")
+            except Exception as e:
+                st.error("Student ID not found or sheet error.")
+
+# =============================
+# 9. MODULE 3 – DAILY CASH REPORT
+# =============================
 elif menu == "Daily Cash Report":
     if check_office_access():
-        st.subheader("Daily Financial Summary")
+        st.subheader(f"Today's Financial Summary – Class {selected_class}")
         today_date = datetime.now().strftime("%d-%m-%Y")
         try:
             data = fees_sheet.get_all_records()
             if data:
                 df = pd.DataFrame(data)
-                df['Date'] = df['Timestamp'].apply(lambda x: x.split(' ')[0])
+                # Extract date part from Timestamp
+                df['Date'] = df['Timestamp'].apply(lambda x: str(x).split(' ')[0] if x else "")
                 today_df = df[df['Date'] == today_date]
-                if not today_df.empty:
-                    st.metric("Total Collection Today", f"₹{today_df['Amount'].sum()}")
-                    st.dataframe(today_df)
-                else: st.info("No transactions today.")
-        except: st.write("No history available.")
 
-# --- MODULE 4: STUDENT RECORDS (Search) ---
+                if today_df.empty:
+                    st.info("No transactions recorded today.")
+                else:
+                    total_amount = today_df['Amount'].sum()
+                    st.metric("Total Collection Today", f"₹{total_amount}")
+                    st.dataframe(today_df[['Student ID','Amount','Month','Timestamp','Payment Mode']])
+            else:
+                st.info("No fee records yet.")
+        except Exception as e:
+            st.error(f"Error reading fee records: {e}")
+
+# =============================
+# 10. MODULE 4 – STUDENT RECORDS
+# =============================
 elif menu == "Student Records":
-    st.subheader("Search Student Profile")
-    search_id = st.text_input("Enter ID").upper()
-    if st.button("Search"):
+    st.subheader(f"Student Profile – Class {selected_class}")
+    selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
+
+    if selected_student != "-- Select --":
+        s_id = selected_student.split(" - ")[0]
         try:
-            all_m = master_sheet.get_all_values()
-            s_data = next((r for r in all_m if r[0].upper() == search_id), None)
-            if s_data:
-                st.info(f"Name: {s_data[1]} | Roll: {s_data[2]}")
-                st.write(f"**Father:** {s_data[3]} | **Contact:** {s_data[5]}")
-                st.markdown(f"### Total Fees Paid: ₹{s_data[6]}")
-                st.divider()
-                st.write("Recent Transactions:")
-                f_hist = fees_sheet.get_all_values()
-                u_hist = [r for r in f_hist if r[0].upper() == search_id]
-                if u_hist: st.table(u_hist)
-            else: st.warning("Not found.")
-        except Exception as e: st.error(f"Search Error: {e}")
+            # Get master row by index using dataframe
+            student_data = df_master[df_master['Student ID'].astype(str) == s_id].iloc[0]
+            name = student_data.get('Name','')
+            roll = student_data.get('Roll No','')
+            father = student_data.get('Father Name','')
+            mobile = student_data.get('Mobile','')
+            total_fees = student_data.get('Total_Fees','0')
+            address = student_data.get('Address','N/A')
+
+            st.info(f"**Name:** {name}  |  **Roll No:** {roll}")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.write(f"**Father's Name:** {father}")
+                st.write(f"**Address:** {address}")
+            with c2:
+                st.write(f"**Mobile:** {mobile}")
+                st.markdown(f"### Total Fees Paid: ₹{total_fees}")
+
+            st.divider()
+            st.subheader("Fee Payment History")
+            all_fee_records = fees_sheet.get_all_values()
+            history = [r for r in all_fee_records if r[0] == s_id]
+            if history:
+                # Remove header if included
+                st.table(history)
+            else:
+                st.write("No payment history found.")
+        except Exception as e:
+            st.warning("Student data not found or sheet misconfigured.")
