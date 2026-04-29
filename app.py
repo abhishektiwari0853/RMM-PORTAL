@@ -69,7 +69,38 @@ if wb is None:
     st.stop()
 
 # -----------------------------
-# 4. SIDEBAR & NAVIGATION
+# 4. SMART SHEET FINDER (Robust against typos)
+# -----------------------------
+def find_class_sheet(class_num, sheet_type):
+    """
+    sheet_type: 'Master', 'Attendance', 'Fees'
+    Returns the worksheet object, or None.
+    Searches by exact match first, then falls back to partial matching.
+    """
+    all_sheets = wb.worksheets()
+    exact_name = f"{sheet_type}_{class_num}"
+    
+    # Try exact match first (strip spaces)
+    for ws in all_sheets:
+        if ws.title.strip() == exact_name:
+            return ws
+    
+    # Fallback: partial match – e.g., 'Attendence_8' should match
+    for ws in all_sheets:
+        title_lower = ws.title.strip().lower()
+        if sheet_type.lower() == 'attendance':
+            if 'attend' in title_lower and str(class_num) in title_lower:
+                return ws
+        elif sheet_type.lower() == 'master':
+            if 'master' in title_lower and str(class_num) in title_lower:
+                return ws
+        elif sheet_type.lower() == 'fees':
+            if 'fees' in title_lower and str(class_num) in title_lower:
+                return ws
+    return None
+
+# -----------------------------
+# 5. SIDEBAR & NAVIGATION
 # -----------------------------
 st.sidebar.header("Administration Panel")
 selected_class = st.sidebar.selectbox("Academic Class", ["7", "8", "9", "10", "11", "12"])
@@ -90,70 +121,45 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # -----------------------------
-# 5. LOAD CLASS SHEETS (INVISIBLE CHAR SAFE)
+# 6. LOAD CLASS SHEETS (SMART MATCHING)
 # -----------------------------
 try:
-    # Strip spaces from all sheet names to avoid hidden characters
-    raw_sheet_names = [ws.title for ws in wb.worksheets()]
-    sheet_names = [name.strip() for name in raw_sheet_names]
+    master_sheet = find_class_sheet(selected_class, 'Master')
+    attendance_sheet = find_class_sheet(selected_class, 'Attendance')
+    fees_sheet = find_class_sheet(selected_class, 'Fees')
 
-    required = [
-        f"Master_{selected_class}".strip(),
-        f"Attendance_{selected_class}".strip(),
-        f"Fees_{selected_class}".strip()
-    ]
-
-    for req in required:
-        if req not in sheet_names:
-            st.error(f"❌ Sheet '{req}' not found. Available sheets: {raw_sheet_names}")
-            st.stop()
-
-    # Now we know required sheets exist, get the actual worksheet objects using the unstripped names
-    # but we can find by stripped name
-    master_sheet = None
-    attendance_sheet = None
-    fees_sheet = None
-    for ws in wb.worksheets():
-        if ws.title.strip() == f"Master_{selected_class}".strip():
-            master_sheet = ws
-        elif ws.title.strip() == f"Attendance_{selected_class}".strip():
-            attendance_sheet = ws
-        elif ws.title.strip() == f"Fees_{selected_class}".strip():
-            fees_sheet = ws
-
-    if master_sheet is None or attendance_sheet is None or fees_sheet is None:
-        st.error("Sheet mapping failed. Please check tab names exactly.")
+    missing = []
+    if not master_sheet: missing.append('Master')
+    if not attendance_sheet: missing.append('Attendance')
+    if not fees_sheet: missing.append('Fees')
+    if missing:
+        st.error(f"❌ Could not find {', '.join(missing)} sheets for Class {selected_class}. "
+                 f"Please check tab names. Available tabs: {[ws.title for ws in wb.worksheets()]}")
         st.stop()
 
-    # ---------- SAFE DATA READING (duplicate headers allowed) ----------
+    # Now read data safely (duplicate headers allowed)
     raw_data = master_sheet.get_all_values()
     if len(raw_data) < 2:
         st.warning("Master sheet has no data rows. Please add students and headers.")
         student_list = []
     else:
         headers = raw_data[0]
-        # Create DataFrame manually (ignore duplicate column issue)
         df_master = pd.DataFrame(raw_data[1:], columns=headers)
 
-        # Case‑insensitive column lookup for 'Student ID' and 'Name'
+        # Case‑insensitive column search for 'Student ID' and 'Name'
         id_col = next((c for c in df_master.columns if c.strip().lower() == 'student id'), None)
         name_col = next((c for c in df_master.columns if c.strip().lower() == 'name'), None)
-
         if id_col and name_col:
-            student_list = [
-                f"{row[id_col]} - {row[name_col]}"
-                for _, row in df_master.iterrows()
-            ]
+            student_list = [f"{row[id_col]} - {row[name_col]}" for _, row in df_master.iterrows()]
         else:
             st.error("Master sheet must contain 'Student ID' and 'Name' columns.")
             student_list = []
-
 except Exception as e:
     st.error(f"❌ Error loading sheets for Class {selected_class}:\n\n{e}\n\n{traceback.format_exc()}")
     st.stop()
 
 # -----------------------------
-# 6. BRANDING (Top Centre Logo)
+# 7. BRANDING (Top Centre Logo)
 # -----------------------------
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
@@ -167,7 +173,7 @@ st.markdown("<h4 style='text-align: center; color: gray;'>Administrative Managem
 st.divider()
 
 # =============================
-# 7. MODULE 1 – ATTENDANCE
+# 8. MODULE 1 – ATTENDANCE
 # =============================
 if menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
@@ -175,7 +181,6 @@ if menu == "Student Attendance":
         st.warning("No students found.")
     else:
         selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
-
         if st.button("Mark Present"):
             if selected_student == "-- Select --":
                 st.warning("Please select a student first.")
@@ -187,7 +192,6 @@ if menu == "Student Attendance":
                     col_idx = headers.index(today) + 1 if today in headers else len(headers) + 1
                     if today not in headers:
                         attendance_sheet.update_cell(1, col_idx, today)
-
                     cell = attendance_sheet.find(s_id)
                     attendance_sheet.update_cell(cell.row, col_idx, "P")
                     st.success(f"Present marked for {selected_student} on {today}")
@@ -195,7 +199,7 @@ if menu == "Student Attendance":
                     st.error(f"Update failed: {e}")
 
 # =============================
-# 8. MODULE 2 – FEE COLLECTION
+# 9. MODULE 2 – FEE COLLECTION
 # =============================
 elif menu == "Fee Collection":
     if check_office_access():
@@ -204,16 +208,13 @@ elif menu == "Fee Collection":
             st.warning("No students found.")
         else:
             selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
-
             if selected_student != "-- Select --":
                 s_id = selected_student.split(" - ")[0]
                 try:
                     m_cell = master_sheet.find(s_id)
                     m_row = master_sheet.row_values(m_cell.row)
-                    # Total_Fees is in column G (index 6)
                     current_fees = int(m_row[6]) if len(m_row) >= 7 and str(m_row[6]).isdigit() else 0
                     st.info(f"**Student:** {m_row[1]} | **Father:** {m_row[3]} | **Total Paid:** ₹{current_fees}")
-
                     with st.form("fee_form", clear_on_submit=True):
                         amount = st.number_input("Amount Received", min_value=0)
                         month = st.selectbox("Month", [
@@ -221,23 +222,18 @@ elif menu == "Fee Collection":
                             "October","November","December","January","February","March"
                         ])
                         payment_mode = st.selectbox("Payment Mode", ["Cash", "Online", "Cheque"])
-
                         if st.form_submit_button("Process Payment"):
                             new_total = current_fees + amount
                             master_sheet.update_cell(m_cell.row, 7, str(new_total))
-
                             timestamp = datetime.now().strftime("%d-%m-%Y %H:%M")
                             combined_date = f"{timestamp} {payment_mode}"
-                            fees_sheet.insert_row(
-                                [s_id, amount, month, combined_date],
-                                index=2
-                            )
+                            fees_sheet.insert_row([s_id, amount, month, combined_date], index=2)
                             st.success(f"Payment of ₹{amount} recorded. New Total: ₹{new_total}")
                 except Exception as e:
                     st.error(f"Error: {e}")
 
 # =============================
-# 9. MODULE 3 – DAILY CASH REPORT
+# 10. MODULE 3 – DAILY CASH REPORT
 # =============================
 elif menu == "Daily Cash Report":
     if check_office_access():
@@ -248,9 +244,7 @@ elif menu == "Daily Cash Report":
             if data:
                 df = pd.DataFrame(data)
                 if 'Date of payment' in df.columns:
-                    df['Date'] = df['Date of payment'].apply(
-                        lambda x: str(x).split(' ')[0] if x else ""
-                    )
+                    df['Date'] = df['Date of payment'].apply(lambda x: str(x).split(' ')[0] if x else "")
                     today_df = df[df['Date'] == today_date]
                     if today_df.empty:
                         st.info("No transactions recorded today.")
@@ -266,7 +260,7 @@ elif menu == "Daily Cash Report":
             st.error(f"Error: {e}")
 
 # =============================
-# 10. MODULE 4 – STUDENT RECORDS
+# 11. MODULE 4 – STUDENT RECORDS
 # =============================
 elif menu == "Student Records":
     st.subheader(f"Student Profile – Class {selected_class}")
@@ -274,18 +268,16 @@ elif menu == "Student Records":
         st.warning("No students found.")
     else:
         selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
-
         if selected_student != "-- Select --":
             s_id = selected_student.split(" - ")[0]
             try:
                 student_data = df_master[df_master['Student ID'].astype(str) == s_id].iloc[0]
                 name = student_data.get('Name','')
                 roll = student_data.get('Roll No','')
-                father = student_data.get('Father name','')  # handles 'Father name' (lowercase)
+                father = student_data.get('Father name', student_data.get('Father Name',''))
                 mobile = student_data.get('Mobile','')
                 total_fees = student_data.get('Total_Fees','0')
-                address = student_data.get('Adress','N/A')  # your sheet has 'Adress' typo
-
+                address = student_data.get('Adress', student_data.get('Address','N/A'))
                 st.info(f"**Name:** {name}  |  **Roll No:** {roll}")
                 c1, c2 = st.columns(2)
                 with c1:
@@ -294,7 +286,6 @@ elif menu == "Student Records":
                 with c2:
                     st.write(f"**Mobile:** {mobile}")
                     st.markdown(f"### Total Fees Paid: ₹{total_fees}")
-
                 st.divider()
                 st.subheader("Fee Payment History")
                 all_fee_records = fees_sheet.get_all_values()
