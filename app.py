@@ -90,21 +90,42 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # -----------------------------
-# 5. LOAD CLASS SHEETS (Duplicate‑safe)
+# 5. LOAD CLASS SHEETS (INVISIBLE CHAR SAFE)
 # -----------------------------
 try:
-    sheet_names = [ws.title for ws in wb.worksheets()]
-    required = [f"Master_{selected_class}", f"Attendance_{selected_class}", f"Fees_{selected_class}"]
+    # Strip spaces from all sheet names to avoid hidden characters
+    raw_sheet_names = [ws.title for ws in wb.worksheets()]
+    sheet_names = [name.strip() for name in raw_sheet_names]
+
+    required = [
+        f"Master_{selected_class}".strip(),
+        f"Attendance_{selected_class}".strip(),
+        f"Fees_{selected_class}".strip()
+    ]
+
     for req in required:
         if req not in sheet_names:
-            st.error(f"❌ Sheet '{req}' not found. Available: {sheet_names}")
+            st.error(f"❌ Sheet '{req}' not found. Available sheets: {raw_sheet_names}")
             st.stop()
 
-    master_sheet = wb.worksheet(f"Master_{selected_class}")
-    attendance_sheet = wb.worksheet(f"Attendance_{selected_class}")
-    fees_sheet = wb.worksheet(f"Fees_{selected_class}")
+    # Now we know required sheets exist, get the actual worksheet objects using the unstripped names
+    # but we can find by stripped name
+    master_sheet = None
+    attendance_sheet = None
+    fees_sheet = None
+    for ws in wb.worksheets():
+        if ws.title.strip() == f"Master_{selected_class}".strip():
+            master_sheet = ws
+        elif ws.title.strip() == f"Attendance_{selected_class}".strip():
+            attendance_sheet = ws
+        elif ws.title.strip() == f"Fees_{selected_class}".strip():
+            fees_sheet = ws
 
-    # ---------- SAFE DATA READING (duplicates allowed) ----------
+    if master_sheet is None or attendance_sheet is None or fees_sheet is None:
+        st.error("Sheet mapping failed. Please check tab names exactly.")
+        st.stop()
+
+    # ---------- SAFE DATA READING (duplicate headers allowed) ----------
     raw_data = master_sheet.get_all_values()
     if len(raw_data) < 2:
         st.warning("Master sheet has no data rows. Please add students and headers.")
@@ -113,10 +134,14 @@ try:
         headers = raw_data[0]
         # Create DataFrame manually (ignore duplicate column issue)
         df_master = pd.DataFrame(raw_data[1:], columns=headers)
-        # Build student list: "ID - Name" (columns: 'Student ID', 'Name')
-        if 'Student ID' in df_master.columns and 'Name' in df_master.columns:
+
+        # Case‑insensitive column lookup for 'Student ID' and 'Name'
+        id_col = next((c for c in df_master.columns if c.strip().lower() == 'student id'), None)
+        name_col = next((c for c in df_master.columns if c.strip().lower() == 'name'), None)
+
+        if id_col and name_col:
             student_list = [
-                f"{row['Student ID']} - {row['Name']}"
+                f"{row[id_col]} - {row[name_col]}"
                 for _, row in df_master.iterrows()
             ]
         else:
@@ -222,7 +247,6 @@ elif menu == "Daily Cash Report":
             data = fees_sheet.get_all_records()
             if data:
                 df = pd.DataFrame(data)
-                # If Date of payment column exists
                 if 'Date of payment' in df.columns:
                     df['Date'] = df['Date of payment'].apply(
                         lambda x: str(x).split(' ')[0] if x else ""
@@ -257,10 +281,10 @@ elif menu == "Student Records":
                 student_data = df_master[df_master['Student ID'].astype(str) == s_id].iloc[0]
                 name = student_data.get('Name','')
                 roll = student_data.get('Roll No','')
-                father = student_data.get('Father Name','')
+                father = student_data.get('Father name','')  # handles 'Father name' (lowercase)
                 mobile = student_data.get('Mobile','')
                 total_fees = student_data.get('Total_Fees','0')
-                address = student_data.get('Address','N/A')
+                address = student_data.get('Adress','N/A')  # your sheet has 'Adress' typo
 
                 st.info(f"**Name:** {name}  |  **Roll No:** {roll}")
                 c1, c2 = st.columns(2)
