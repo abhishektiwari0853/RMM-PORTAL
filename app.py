@@ -4,7 +4,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import pandas as pd
 import traceback
-import re
+import calendar
 
 # -----------------------------
 # 1. CONFIGURATION
@@ -90,17 +90,18 @@ def find_class_sheet(class_num, sheet_type):
     return None
 
 # -----------------------------
-# 5. SIDEBAR & NAVIGATION
+# 5. SIDEBAR & NAVIGATION (updated with new menus)
 # -----------------------------
 st.sidebar.header("Administration Panel")
 selected_class = st.sidebar.selectbox("Academic Class", ["7", "8", "9", "10", "11", "12"])
 menu = st.sidebar.radio("Navigation", [
     "Student Attendance",
+    "Attendance Report",          # <-- Naya
     "Fee Collection",
     "Daily Cash Report",
     "Student Records",
     "Edit Student Details",
-    "Add New Student"           # ← Naya feature
+    "Add New Student"
 ])
 
 if "office_auth" in st.session_state:
@@ -161,7 +162,7 @@ st.markdown("<h4 style='text-align: center; color: gray;'>Administrative Managem
 st.divider()
 
 # =============================
-# 8. ATTENDANCE
+# 8. MODULE – STUDENT ATTENDANCE (with Mark All Present)
 # =============================
 if menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
@@ -169,25 +170,148 @@ if menu == "Student Attendance":
         st.warning("No students found.")
     else:
         selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
-        if st.button("Mark Present"):
-            if selected_student == "-- Select --":
-                st.warning("Please select a student first.")
-            else:
-                s_id = selected_student.split(" - ")[0]
+
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("Mark Present"):
+                if selected_student == "-- Select --":
+                    st.warning("Please select a student first.")
+                else:
+                    s_id = selected_student.split(" - ")[0]
+                    try:
+                        today = datetime.now().strftime("%d-%m-%Y")
+                        headers_att = attendance_sheet.row_values(1)
+                        col_idx = headers_att.index(today) + 1 if today in headers_att else len(headers_att) + 1
+                        if today not in headers_att:
+                            attendance_sheet.update_cell(1, col_idx, today)
+                        cell = attendance_sheet.find(s_id)
+                        attendance_sheet.update_cell(cell.row, col_idx, "P")
+                        st.success(f"Present marked for {selected_student} on {today}")
+                    except Exception as e:
+                        st.error(f"Update failed: {e}")
+
+        with col_btn2:
+            if st.button("✅ Mark All Present"):
                 try:
                     today = datetime.now().strftime("%d-%m-%Y")
                     headers_att = attendance_sheet.row_values(1)
                     col_idx = headers_att.index(today) + 1 if today in headers_att else len(headers_att) + 1
                     if today not in headers_att:
                         attendance_sheet.update_cell(1, col_idx, today)
-                    cell = attendance_sheet.find(s_id)
-                    attendance_sheet.update_cell(cell.row, col_idx, "P")
-                    st.success(f"Present marked for {selected_student} on {today}")
+
+                    # Collect all student IDs from master
+                    all_ids = [f"{row[id_col]}" for _, row in df_master.iterrows()]
+                    success_count = 0
+                    for sid in all_ids:
+                        try:
+                            cell = attendance_sheet.find(sid)
+                            attendance_sheet.update_cell(cell.row, col_idx, "P")
+                            success_count += 1
+                        except:
+                            # Student not found in attendance sheet – skip
+                            pass
+                    st.success(f"All {success_count} students marked Present for {today}!")
                 except Exception as e:
-                    st.error(f"Update failed: {e}")
+                    st.error(f"Error in bulk attendance: {e}")
 
 # =============================
-# 9. FEE COLLECTION
+# 9. MODULE – ATTENDANCE REPORT (Monthly Percentage)
+# =============================
+elif menu == "Attendance Report":
+    st.subheader(f"Monthly Attendance Report – Class {selected_class}")
+    
+    # Month selection
+    month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    selected_month = st.selectbox("Select Month", month_names, index=current_month-1)
+    selected_year = st.number_input("Year", min_value=2020, max_value=2030, value=current_year)
+    
+    # Convert month name to number
+    month_num = month_names.index(selected_month) + 1
+    month_str = f"{month_num:02d}"  # e.g., "04" for April
+    
+    try:
+        # Read attendance data
+        att_values = attendance_sheet.get_all_values()
+        if len(att_values) < 2:
+            st.warning("No attendance data found.")
+        else:
+            att_headers = att_values[0]
+            # Identify columns that match the selected month (format DD-MM-YYYY)
+            date_cols = []
+            col_indices = []
+            for idx, h in enumerate(att_headers):
+                if idx == 0:  # first column is Student ID
+                    continue
+                # Check if header matches DD-MM-YYYY and month-year matches
+                parts = h.split('-')
+                if len(parts) == 3:
+                    if parts[1] == month_str and parts[2] == str(selected_year):
+                        date_cols.append(h)
+                        col_indices.append(idx)
+            
+            if not date_cols:
+                st.warning(f"No attendance records found for {selected_month} {selected_year}.")
+            else:
+                total_days = len(date_cols)
+                
+                # Build student attendance table
+                student_records = []
+                for row in att_values[1:]:
+                    sid = row[0]
+                    # Find student name from master
+                    name = "N/A"
+                    mask = df_master[id_col].astype(str) == sid
+                    if mask.any():
+                        name = df_master.loc[mask, name_col].values[0]
+                    
+                    # Count 'P' in selected month columns
+                    present = 0
+                    for ci in col_indices:
+                        if ci < len(row) and row[ci].strip().upper() == 'P':
+                            present += 1
+                    
+                    percent = (present / total_days * 100) if total_days > 0 else 0
+                    student_records.append({
+                        "Student ID": sid,
+                        "Name": name,
+                        "Working Days": total_days,
+                        "Present": present,
+                        "Attendance %": round(percent, 1)
+                    })
+                
+                df_report = pd.DataFrame(student_records)
+                
+                # Highlight low attendance
+                def highlight_low(val):
+                    if pd.isna(val):
+                        return ''
+                    if val < 75:
+                        return 'background-color: #ffcccc'
+                    return ''
+                
+                styled_df = df_report.style.applymap(highlight_low, subset=['Attendance %'])
+                st.dataframe(styled_df, use_container_width=True)
+                
+                # Download button for Excel
+                if st.button("Download Report as Excel"):
+                    towrite = df_report.copy()
+                    output = pd.ExcelWriter('attendance_report.xlsx', engine='xlsxwriter')
+                    towrite.to_excel(output, index=False, sheet_name='Report')
+                    output.close()
+                    with open('attendance_report.xlsx', 'rb') as f:
+                        st.download_button(
+                            label="Click to Download",
+                            data=f,
+                            file_name=f"Attendance_Class{selected_class}_{selected_month}_{selected_year}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+    except Exception as e:
+        st.error(f"Error generating report: {e}")
+
+# =============================
+# 10. MODULE – FEE COLLECTION
 # =============================
 elif menu == "Fee Collection":
     if check_office_access():
@@ -222,7 +346,7 @@ elif menu == "Fee Collection":
                     st.error(f"Error: {e}")
 
 # =============================
-# 10. DAILY CASH REPORT
+# 11. MODULE – DAILY CASH REPORT
 # =============================
 elif menu == "Daily Cash Report":
     if check_office_access():
@@ -249,7 +373,7 @@ elif menu == "Daily Cash Report":
             st.error(f"Error: {e}")
 
 # =============================
-# 11. STUDENT RECORDS
+# 12. MODULE – STUDENT RECORDS
 # =============================
 elif menu == "Student Records":
     st.subheader(f"Student Profile – Class {selected_class}")
@@ -287,7 +411,7 @@ elif menu == "Student Records":
                 st.warning(f"Error: {e}")
 
 # =============================
-# 12. EDIT STUDENT DETAILS
+# 13. MODULE – EDIT STUDENT DETAILS
 # =============================
 elif menu == "Edit Student Details":
     st.subheader(f"Edit Student Information – Class {selected_class}")
@@ -359,16 +483,14 @@ elif menu == "Edit Student Details":
                 st.error(f"Error: {e}")
 
 # =============================
-# 13. ADD NEW STUDENT (AUTO ID & ROLL)
+# 14. MODULE – ADD NEW STUDENT (AUTO ID & ROLL)
 # =============================
 elif menu == "Add New Student":
     st.subheader(f"Enroll New Student – Class {selected_class}")
 
-    # Extract all IDs for this class to generate next ID
     existing_ids = []
     existing_rolls = []
     if not df_master.empty:
-        # Get column names case-insensitive
         id_col_name = next((c for c in df_master.columns if c.lower() == 'student id'), None)
         roll_col_name = next((c for c in df_master.columns if c.lower() == 'roll no'), None)
         if id_col_name:
@@ -379,7 +501,6 @@ elif menu == "Add New Student":
             except:
                 existing_rolls = []
 
-    # Auto-generate Student ID: RMEC + class + next number
     prefix = f"RMEC{selected_class}"
     max_seq = 0
     for sid in existing_ids:
@@ -387,9 +508,8 @@ elif menu == "Add New Student":
             num_part = sid[len(prefix):]
             if num_part.isdigit():
                 max_seq = max(max_seq, int(num_part))
-    new_id = f"{prefix}{max_seq + 1:03d}"   # e.g., RMEC7001 if max was 0
+    new_id = f"{prefix}{max_seq + 1:03d}"
 
-    # Auto-generate Roll No: max existing + 1
     new_roll = 1
     if existing_rolls:
         new_roll = max(existing_rolls) + 1
@@ -410,8 +530,6 @@ elif menu == "Add New Student":
             if not new_name.strip() or not new_father.strip():
                 st.error("❌ Student Name and Father's Name are required.")
             else:
-                # Prepare new row according to Master sheet column order
-                # We know the column mapping: A-J: ID, Name, Roll No, Father Name, Node, Mobile, Total_Fees, Address, Node, Aadhar
                 new_row = [
                     new_id,
                     new_name.strip(),
@@ -426,14 +544,10 @@ elif menu == "Add New Student":
                 ]
                 try:
                     master_sheet.append_row(new_row, value_input_option='USER_ENTERED')
-                    # Also add the new student to the Attendance sheet (just ID in first column)
                     attendance_sheet.append_row([new_id])
-
                     st.success(f"✅ Student {new_name} ({new_id}) enrolled successfully!")
                     st.balloons()
-                    # Clear cache to refresh data next time
                     st.cache_resource.clear()
-                    # Auto-refresh after 2 seconds
                     st.write("Refreshing data...")
                     st.rerun()
                 except Exception as e:
