@@ -1,10 +1,10 @@
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import traceback
-import calendar
+import io
 
 # -----------------------------
 # 1. CONFIGURATION
@@ -90,18 +90,19 @@ def find_class_sheet(class_num, sheet_type):
     return None
 
 # -----------------------------
-# 5. SIDEBAR & NAVIGATION (updated with new menus)
+# 5. SIDEBAR & NAVIGATION (including new items)
 # -----------------------------
 st.sidebar.header("Administration Panel")
 selected_class = st.sidebar.selectbox("Academic Class", ["7", "8", "9", "10", "11", "12"])
 menu = st.sidebar.radio("Navigation", [
     "Student Attendance",
-    "Attendance Report",          # <-- Naya
+    "Attendance Report",
     "Fee Collection",
     "Daily Cash Report",
     "Student Records",
     "Edit Student Details",
-    "Add New Student"
+    "Add New Student",
+    "At-Risk Students"            # ← Dropout Prediction
 ])
 
 if "office_auth" in st.session_state:
@@ -162,7 +163,7 @@ st.markdown("<h4 style='text-align: center; color: gray;'>Administrative Managem
 st.divider()
 
 # =============================
-# 8. MODULE – STUDENT ATTENDANCE (with Mark All Present)
+# 8. MODULE – STUDENT ATTENDANCE (with Mark All & Auto Absent)
 # =============================
 if menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
@@ -171,8 +172,8 @@ if menu == "Student Attendance":
     else:
         selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
 
-        col_btn1, col_btn2 = st.columns(2)
-        with col_btn1:
+        col1, col2, col3 = st.columns(3)
+        with col1:
             if st.button("Mark Present"):
                 if selected_student == "-- Select --":
                     st.warning("Please select a student first.")
@@ -180,135 +181,124 @@ if menu == "Student Attendance":
                     s_id = selected_student.split(" - ")[0]
                     try:
                         today = datetime.now().strftime("%d-%m-%Y")
-                        headers_att = attendance_sheet.row_values(1)
-                        col_idx = headers_att.index(today) + 1 if today in headers_att else len(headers_att) + 1
-                        if today not in headers_att:
+                        hdrs = attendance_sheet.row_values(1)
+                        col_idx = hdrs.index(today) + 1 if today in hdrs else len(hdrs) + 1
+                        if today not in hdrs:
                             attendance_sheet.update_cell(1, col_idx, today)
                         cell = attendance_sheet.find(s_id)
                         attendance_sheet.update_cell(cell.row, col_idx, "P")
-                        st.success(f"Present marked for {selected_student} on {today}")
+                        st.success(f"Present marked for {selected_student}")
                     except Exception as e:
                         st.error(f"Update failed: {e}")
 
-        with col_btn2:
+        with col2:
             if st.button("✅ Mark All Present"):
                 try:
                     today = datetime.now().strftime("%d-%m-%Y")
-                    headers_att = attendance_sheet.row_values(1)
-                    col_idx = headers_att.index(today) + 1 if today in headers_att else len(headers_att) + 1
-                    if today not in headers_att:
+                    hdrs = attendance_sheet.row_values(1)
+                    col_idx = hdrs.index(today) + 1 if today in hdrs else len(hdrs) + 1
+                    if today not in hdrs:
                         attendance_sheet.update_cell(1, col_idx, today)
-
-                    # Collect all student IDs from master
                     all_ids = [f"{row[id_col]}" for _, row in df_master.iterrows()]
-                    success_count = 0
+                    cnt = 0
                     for sid in all_ids:
                         try:
                             cell = attendance_sheet.find(sid)
                             attendance_sheet.update_cell(cell.row, col_idx, "P")
-                            success_count += 1
+                            cnt += 1
                         except:
-                            # Student not found in attendance sheet – skip
                             pass
-                    st.success(f"All {success_count} students marked Present for {today}!")
+                    st.success(f"All {cnt} students marked Present")
                 except Exception as e:
-                    st.error(f"Error in bulk attendance: {e}")
+                    st.error(f"Error: {e}")
+
+        with col3:
+            if st.button("⚠️ Mark Absent for Unmarked"):
+                try:
+                    today = datetime.now().strftime("%d-%m-%Y")
+                    hdrs = attendance_sheet.row_values(1)
+                    if today not in hdrs:
+                        st.warning("Today's column not created yet. Mark at least one student first.")
+                    else:
+                        col_idx = hdrs.index(today) + 1
+                        all_ids = [f"{row[id_col]}" for _, row in df_master.iterrows()]
+                        absent_cnt = 0
+                        for sid in all_ids:
+                            try:
+                                cell = attendance_sheet.find(sid)
+                                curr_val = attendance_sheet.cell(cell.row, col_idx).value
+                                if curr_val is None or curr_val.strip() == "":
+                                    attendance_sheet.update_cell(cell.row, col_idx, "A")
+                                    absent_cnt += 1
+                            except:
+                                pass
+                        st.success(f"Marked {absent_cnt} students as Absent")
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
 # =============================
-# 9. MODULE – ATTENDANCE REPORT (Monthly Percentage)
+# 9. MODULE – ATTENDANCE REPORT (with Excel Download)
 # =============================
 elif menu == "Attendance Report":
     st.subheader(f"Monthly Attendance Report – Class {selected_class}")
-    
-    # Month selection
-    month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"]
-    current_month = datetime.now().month
-    current_year = datetime.now().year
-    selected_month = st.selectbox("Select Month", month_names, index=current_month-1)
-    selected_year = st.number_input("Year", min_value=2020, max_value=2030, value=current_year)
-    
-    # Convert month name to number
-    month_num = month_names.index(selected_month) + 1
-    month_str = f"{month_num:02d}"  # e.g., "04" for April
-    
+    months = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+    sel_month = st.selectbox("Month", months, index=datetime.now().month-1)
+    sel_year = st.number_input("Year", min_value=2020, max_value=2030, value=datetime.now().year)
+    month_num = months.index(sel_month) + 1
+    month_str = f"{month_num:02d}"
+
     try:
-        # Read attendance data
-        att_values = attendance_sheet.get_all_values()
-        if len(att_values) < 2:
-            st.warning("No attendance data found.")
+        att_vals = attendance_sheet.get_all_values()
+        if len(att_vals) < 2:
+            st.warning("No attendance data.")
         else:
-            att_headers = att_values[0]
-            # Identify columns that match the selected month (format DD-MM-YYYY)
+            att_headers = att_vals[0]
             date_cols = []
             col_indices = []
             for idx, h in enumerate(att_headers):
-                if idx == 0:  # first column is Student ID
-                    continue
-                # Check if header matches DD-MM-YYYY and month-year matches
+                if idx == 0: continue
                 parts = h.split('-')
-                if len(parts) == 3:
-                    if parts[1] == month_str and parts[2] == str(selected_year):
-                        date_cols.append(h)
-                        col_indices.append(idx)
-            
+                if len(parts) == 3 and parts[1] == month_str and parts[2] == str(sel_year):
+                    date_cols.append(h)
+                    col_indices.append(idx)
             if not date_cols:
-                st.warning(f"No attendance records found for {selected_month} {selected_year}.")
+                st.warning(f"No records for {sel_month} {sel_year}")
             else:
                 total_days = len(date_cols)
-                
-                # Build student attendance table
-                student_records = []
-                for row in att_values[1:]:
+                records = []
+                for row in att_vals[1:]:
                     sid = row[0]
-                    # Find student name from master
                     name = "N/A"
                     mask = df_master[id_col].astype(str) == sid
                     if mask.any():
                         name = df_master.loc[mask, name_col].values[0]
-                    
-                    # Count 'P' in selected month columns
-                    present = 0
-                    for ci in col_indices:
-                        if ci < len(row) and row[ci].strip().upper() == 'P':
-                            present += 1
-                    
-                    percent = (present / total_days * 100) if total_days > 0 else 0
-                    student_records.append({
+                    present = sum(1 for ci in col_indices if ci < len(row) and row[ci].strip().upper() == 'P')
+                    percent = (present / total_days * 100) if total_days else 0
+                    records.append({
                         "Student ID": sid,
                         "Name": name,
                         "Working Days": total_days,
                         "Present": present,
                         "Attendance %": round(percent, 1)
                     })
-                
-                df_report = pd.DataFrame(student_records)
-                
-                # Highlight low attendance
+                df_rep = pd.DataFrame(records)
+
                 def highlight_low(val):
-                    if pd.isna(val):
-                        return ''
-                    if val < 75:
-                        return 'background-color: #ffcccc'
-                    return ''
-                
-                styled_df = df_report.style.applymap(highlight_low, subset=['Attendance %'])
-                st.dataframe(styled_df, use_container_width=True)
-                
-                # Download button for Excel
-                if st.button("Download Report as Excel"):
-                    towrite = df_report.copy()
-                    output = pd.ExcelWriter('attendance_report.xlsx', engine='xlsxwriter')
-                    towrite.to_excel(output, index=False, sheet_name='Report')
-                    output.close()
-                    with open('attendance_report.xlsx', 'rb') as f:
-                        st.download_button(
-                            label="Click to Download",
-                            data=f,
-                            file_name=f"Attendance_Class{selected_class}_{selected_month}_{selected_year}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                    return 'background-color: #ffcccc' if val < 75 else ''
+                st.dataframe(df_rep.style.applymap(highlight_low, subset=['Attendance %']), use_container_width=True)
+
+                # Excel Download
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df_rep.to_excel(writer, index=False, sheet_name='Attendance')
+                st.download_button(
+                    label="📥 Download Excel Report",
+                    data=buffer.getvalue(),
+                    file_name=f"Attendance_Class{selected_class}_{sel_month}_{sel_year}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
     except Exception as e:
-        st.error(f"Error generating report: {e}")
+        st.error(f"Error: {e}")
 
 # =============================
 # 10. MODULE – FEE COLLECTION
@@ -330,17 +320,13 @@ elif menu == "Fee Collection":
 
                     with st.form("fee_form", clear_on_submit=True):
                         amount = st.number_input("Amount Received", min_value=0)
-                        month = st.selectbox("Month", [
-                            "April","May","June","July","August","September",
-                            "October","November","December","January","February","March"
-                        ])
-                        payment_mode = st.selectbox("Payment Mode", ["Cash", "Online", "Cheque"])
+                        month = st.selectbox("Month", ["April","May","June","July","August","September","October","November","December","January","February","March"])
+                        mode = st.selectbox("Payment Mode", ["Cash", "Online", "Cheque"])
                         if st.form_submit_button("Process Payment"):
                             new_total = current_fees + amount
                             master_sheet.update_cell(m_cell.row, 7, str(new_total))
-                            timestamp = datetime.now().strftime("%d-%m-%Y %H:%M")
-                            combined_date = f"{timestamp} {payment_mode}"
-                            fees_sheet.insert_row([s_id, amount, month, combined_date], index=2)
+                            ts = datetime.now().strftime("%d-%m-%Y %H:%M")
+                            fees_sheet.insert_row([s_id, amount, month, f"{ts} {mode}"], index=2)
                             st.success(f"Payment of ₹{amount} recorded. New Total: ₹{new_total}")
                 except Exception as e:
                     st.error(f"Error: {e}")
@@ -355,15 +341,15 @@ elif menu == "Daily Cash Report":
         try:
             data = fees_sheet.get_all_records()
             if data:
-                df = pd.DataFrame(data)
-                if 'Date of payment' in df.columns:
-                    df['Date'] = df['Date of payment'].apply(lambda x: str(x).split(' ')[0] if x else "")
-                    today_df = df[df['Date'] == today_date]
+                df_fees = pd.DataFrame(data)
+                if 'Date of payment' in df_fees.columns:
+                    df_fees['Date'] = df_fees['Date of payment'].apply(lambda x: str(x).split(' ')[0] if x else "")
+                    today_df = df_fees[df_fees['Date'] == today_date]
                     if today_df.empty:
                         st.info("No transactions recorded today.")
                     else:
-                        total_amount = today_df['Amount'].sum()
-                        st.metric("Total Collection Today", f"₹{total_amount}")
+                        tot = today_df['Amount'].sum()
+                        st.metric("Total Collection Today", f"₹{tot}")
                         st.dataframe(today_df[['Student ID','Amount','Month','Date of payment']])
                 else:
                     st.error("Fees sheet missing 'Date of payment' column.")
@@ -373,7 +359,7 @@ elif menu == "Daily Cash Report":
             st.error(f"Error: {e}")
 
 # =============================
-# 12. MODULE – STUDENT RECORDS
+# 12. MODULE – STUDENT RECORDS (with Fee History Excel Download)
 # =============================
 elif menu == "Student Records":
     st.subheader(f"Student Profile – Class {selected_class}")
@@ -402,11 +388,27 @@ elif menu == "Student Records":
                 st.divider()
                 st.subheader("Fee Payment History")
                 all_fee_records = fees_sheet.get_all_values()
-                history = [r for r in all_fee_records[1:] if r[0].upper() == s_id.upper()]
-                if history:
-                    st.table([all_fee_records[0]] + history)
+                if len(all_fee_records) > 1:
+                    fee_headers = all_fee_records[0]
+                    history = [r for r in all_fee_records[1:] if r[0].upper() == s_id.upper()]
+                    if history:
+                        tdata = [fee_headers] + history
+                        st.table(tdata)
+                        # Excel download for fee history
+                        pdf_df = pd.DataFrame(history, columns=fee_headers)
+                        buf = io.BytesIO()
+                        with pd.ExcelWriter(buf, engine='xlsxwriter') as w:
+                            pdf_df.to_excel(w, index=False, sheet_name='FeeHistory')
+                        st.download_button(
+                            label="📥 Download Fee History (Excel)",
+                            data=buf.getvalue(),
+                            file_name=f"FeeHistory_{s_id}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.write("No payment history found.")
                 else:
-                    st.write("No payment history found.")
+                    st.write("No payment records available.")
             except Exception as e:
                 st.warning(f"Error: {e}")
 
@@ -483,11 +485,10 @@ elif menu == "Edit Student Details":
                 st.error(f"Error: {e}")
 
 # =============================
-# 14. MODULE – ADD NEW STUDENT (AUTO ID & ROLL)
+# 14. MODULE – ADD NEW STUDENT
 # =============================
 elif menu == "Add New Student":
     st.subheader(f"Enroll New Student – Class {selected_class}")
-
     existing_ids = []
     existing_rolls = []
     if not df_master.empty:
@@ -515,40 +516,86 @@ elif menu == "Add New Student":
         new_roll = max(existing_rolls) + 1
 
     with st.form("add_student_form", clear_on_submit=True):
-        st.markdown("**Student ID (auto‑generated)**")
         st.info(new_id)
-        st.markdown("**Roll Number (auto‑generated)**")
+        st.caption("Student ID (auto‑generated)")
         st.info(str(new_roll))
+        st.caption("Roll Number (auto‑generated)")
         new_name = st.text_input("Full Name *")
         new_father = st.text_input("Father's Name *")
         new_mobile = st.text_input("Mobile Number")
         new_address = st.text_input("Address")
         new_aadhaar = st.text_input("Aadhaar Number")
-        st.markdown("*marked fields are mandatory")
-
         if st.form_submit_button("Enroll Student"):
             if not new_name.strip() or not new_father.strip():
-                st.error("❌ Student Name and Father's Name are required.")
+                st.error("❌ Name and Father's Name are required.")
             else:
                 new_row = [
-                    new_id,
-                    new_name.strip(),
-                    str(new_roll),
-                    new_father.strip(),
-                    "",                    # Node (blank)
-                    new_mobile.strip() if new_mobile else "",
-                    "0",                   # Total_Fees initially 0
-                    new_address.strip() if new_address else "",
-                    "",                    # second Node (blank)
+                    new_id, new_name.strip(), str(new_roll), new_father.strip(),
+                    "", new_mobile.strip() if new_mobile else "", "0",
+                    new_address.strip() if new_address else "", "",
                     new_aadhaar.strip() if new_aadhaar else ""
                 ]
                 try:
                     master_sheet.append_row(new_row, value_input_option='USER_ENTERED')
                     attendance_sheet.append_row([new_id])
-                    st.success(f"✅ Student {new_name} ({new_id}) enrolled successfully!")
+                    st.success(f"✅ {new_name} enrolled!")
                     st.balloons()
                     st.cache_resource.clear()
-                    st.write("Refreshing data...")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"❌ Failed to add student: {e}")
+                    st.error(f"Error: {e}")
+
+# =============================
+# 15. MODULE – AT‑RISK STUDENTS (Dropout Prediction)
+# =============================
+elif menu == "At-Risk Students":
+    st.subheader(f"🚨 Dropout Risk Alert – Class {selected_class}")
+    st.caption("Students with 5+ consecutive absences (non‑'P' marks)")
+
+    try:
+        att_vals = attendance_sheet.get_all_values()
+        if len(att_vals) < 2:
+            st.warning("No attendance data.")
+        else:
+            att_headers = att_vals[0]
+            # Sort date columns in chronological order
+            date_map = {}
+            for idx, h in enumerate(att_headers):
+                if idx == 0: continue
+                parts = h.split('-')
+                if len(parts) == 3:
+                    try:
+                        d = datetime.strptime(h, "%d-%m-%Y")
+                        date_map[idx] = d
+                    except:
+                        pass
+            sorted_cols = sorted(date_map.items(), key=lambda x: x[1])  # (col_idx, date)
+
+            at_risk = []
+            for row_idx, row in enumerate(att_vals[1:], start=2):   # row numbers in sheet
+                sid = row[0]
+                name = "N/A"
+                mask = df_master[id_col].astype(str) == sid
+                if mask.any():
+                    name = df_master.loc[mask, name_col].values[0]
+                # Determine absent sequence
+                max_consec = 0
+                current_streak = 0
+                for col_idx, _ in sorted_cols:
+                    val = row[col_idx].strip().upper() if col_idx < len(row) else ""
+                    if val != 'P':   # absent or unmarked
+                        current_streak += 1
+                    else:
+                        current_streak = 0
+                    max_consec = max(max_consec, current_streak)
+                if max_consec >= 5:
+                    at_risk.append((sid, name, max_consec))
+
+            if at_risk:
+                df_risk = pd.DataFrame(at_risk, columns=["Student ID", "Name", "Consecutive Absences"])
+                st.warning(f"Total students at risk: {len(at_risk)}")
+                st.dataframe(df_risk.style.applymap(lambda x: 'background-color: #ff4d4d' if isinstance(x, int) and x >= 5 else '', subset=['Consecutive Absences']))
+            else:
+                st.success("No students with 5+ consecutive absences. Keep it up!")
+    except Exception as e:
+        st.error(f"Error: {e}")
