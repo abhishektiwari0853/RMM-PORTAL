@@ -69,34 +69,25 @@ if wb is None:
     st.stop()
 
 # -----------------------------
-# 4. SMART SHEET FINDER (Robust against typos)
+# 4. SMART SHEET FINDER
 # -----------------------------
 def find_class_sheet(class_num, sheet_type):
-    """
-    sheet_type: 'Master', 'Attendance', 'Fees'
-    Returns the worksheet object, or None.
-    Searches by exact match first, then falls back to partial matching.
-    """
+    """Returns worksheet object or None. Tolerates typos like 'Attendence'."""
     all_sheets = wb.worksheets()
     exact_name = f"{sheet_type}_{class_num}"
-    
-    # Try exact match first (strip spaces)
     for ws in all_sheets:
         if ws.title.strip() == exact_name:
             return ws
-    
-    # Fallback: partial match – e.g., 'Attendence_8' should match
+    # Fallback: partial match
     for ws in all_sheets:
-        title_lower = ws.title.strip().lower()
-        if sheet_type.lower() == 'attendance':
-            if 'attend' in title_lower and str(class_num) in title_lower:
-                return ws
-        elif sheet_type.lower() == 'master':
-            if 'master' in title_lower and str(class_num) in title_lower:
-                return ws
-        elif sheet_type.lower() == 'fees':
-            if 'fees' in title_lower and str(class_num) in title_lower:
-                return ws
+        title = ws.title.strip().lower()
+        target = sheet_type.lower()
+        if target == 'attendance' and 'attend' in title and str(class_num) in title:
+            return ws
+        elif target == 'master' and 'master' in title and str(class_num) in title:
+            return ws
+        elif target == 'fees' and 'fees' in title and str(class_num) in title:
+            return ws
     return None
 
 # -----------------------------
@@ -108,7 +99,8 @@ menu = st.sidebar.radio("Navigation", [
     "Student Attendance",
     "Fee Collection",
     "Daily Cash Report",
-    "Student Records"
+    "Student Records",
+    "Edit Student Details"           # ← Naya menu
 ])
 
 if "office_auth" in st.session_state:
@@ -121,45 +113,44 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # -----------------------------
-# 6. LOAD CLASS SHEETS (SMART MATCHING)
+# 6. LOAD CLASS SHEETS + STUDENT LIST
 # -----------------------------
 try:
     master_sheet = find_class_sheet(selected_class, 'Master')
     attendance_sheet = find_class_sheet(selected_class, 'Attendance')
     fees_sheet = find_class_sheet(selected_class, 'Fees')
 
-    missing = []
-    if not master_sheet: missing.append('Master')
-    if not attendance_sheet: missing.append('Attendance')
-    if not fees_sheet: missing.append('Fees')
-    if missing:
-        st.error(f"❌ Could not find {', '.join(missing)} sheets for Class {selected_class}. "
-                 f"Please check tab names. Available tabs: {[ws.title for ws in wb.worksheets()]}")
+    if not all([master_sheet, attendance_sheet, fees_sheet]):
+        missing = []
+        if not master_sheet: missing.append('Master')
+        if not attendance_sheet: missing.append('Attendance')
+        if not fees_sheet: missing.append('Fees')
+        st.error(f"❌ Missing sheets for Class {selected_class}: {', '.join(missing)}")
         st.stop()
 
-    # Now read data safely (duplicate headers allowed)
+    # Read master data (handles duplicate columns)
     raw_data = master_sheet.get_all_values()
     if len(raw_data) < 2:
         st.warning("Master sheet has no data rows. Please add students and headers.")
         student_list = []
     else:
-        headers = raw_data[0]
+        headers = [h.strip() for h in raw_data[0]]          # clean headers
         df_master = pd.DataFrame(raw_data[1:], columns=headers)
 
-        # Case‑insensitive column search for 'Student ID' and 'Name'
-        id_col = next((c for c in df_master.columns if c.strip().lower() == 'student id'), None)
-        name_col = next((c for c in df_master.columns if c.strip().lower() == 'name'), None)
+        # Find columns for ID and Name (case‑insensitive)
+        id_col = next((c for c in df_master.columns if c.lower() == 'student id'), None)
+        name_col = next((c for c in df_master.columns if c.lower() == 'name'), None)
         if id_col and name_col:
             student_list = [f"{row[id_col]} - {row[name_col]}" for _, row in df_master.iterrows()]
         else:
             st.error("Master sheet must contain 'Student ID' and 'Name' columns.")
             student_list = []
 except Exception as e:
-    st.error(f"❌ Error loading sheets for Class {selected_class}:\n\n{e}\n\n{traceback.format_exc()}")
+    st.error(f"❌ Error loading sheets for Class {selected_class}:\n{e}\n{traceback.format_exc()}")
     st.stop()
 
 # -----------------------------
-# 7. BRANDING (Top Centre Logo)
+# 7. BRANDING
 # -----------------------------
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
@@ -167,13 +158,12 @@ with col2:
         st.image("School_logo.png", width=180)
     except:
         st.caption("School Logo not found")
-
 st.markdown("<h1 style='text-align: center;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
 st.markdown("<h4 style='text-align: center; color: gray;'>Administrative Management System</h4>", unsafe_allow_html=True)
 st.divider()
 
 # =============================
-# 8. MODULE 1 – ATTENDANCE
+# 8. MODULE – ATTENDANCE
 # =============================
 if menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
@@ -199,7 +189,7 @@ if menu == "Student Attendance":
                     st.error(f"Update failed: {e}")
 
 # =============================
-# 9. MODULE 2 – FEE COLLECTION
+# 9. MODULE – FEE COLLECTION
 # =============================
 elif menu == "Fee Collection":
     if check_office_access():
@@ -215,6 +205,7 @@ elif menu == "Fee Collection":
                     m_row = master_sheet.row_values(m_cell.row)
                     current_fees = int(m_row[6]) if len(m_row) >= 7 and str(m_row[6]).isdigit() else 0
                     st.info(f"**Student:** {m_row[1]} | **Father:** {m_row[3]} | **Total Paid:** ₹{current_fees}")
+
                     with st.form("fee_form", clear_on_submit=True):
                         amount = st.number_input("Amount Received", min_value=0)
                         month = st.selectbox("Month", [
@@ -233,7 +224,7 @@ elif menu == "Fee Collection":
                     st.error(f"Error: {e}")
 
 # =============================
-# 10. MODULE 3 – DAILY CASH REPORT
+# 10. MODULE – DAILY CASH REPORT
 # =============================
 elif menu == "Daily Cash Report":
     if check_office_access():
@@ -260,7 +251,7 @@ elif menu == "Daily Cash Report":
             st.error(f"Error: {e}")
 
 # =============================
-# 11. MODULE 4 – STUDENT RECORDS
+# 11. MODULE – STUDENT RECORDS
 # =============================
 elif menu == "Student Records":
     st.subheader(f"Student Profile – Class {selected_class}")
@@ -296,3 +287,93 @@ elif menu == "Student Records":
                     st.write("No payment history found.")
             except Exception as e:
                 st.warning(f"Error: {e}")
+
+# =============================
+# 12. MODULE – EDIT STUDENT DETAILS (NO OFFICE PIN)
+# =============================
+elif menu == "Edit Student Details":
+    st.subheader(f"Edit Student Information – Class {selected_class}")
+    if not student_list:
+        st.warning("No students found.")
+    else:
+        selected_student = st.selectbox("Choose Student to Edit", ["-- Select --"] + student_list)
+        if selected_student != "-- Select --":
+            s_id = selected_student.split(" - ")[0]
+            # Get current data from master sheet (using row_values to ensure correct order)
+            try:
+                cell = master_sheet.find(s_id)
+                row_num = cell.row
+                row_data = master_sheet.row_values(row_num)   # exact list from sheet
+                headers = [h.strip() for h in master_sheet.row_values(1)]   # header row
+
+                # Helper to find column index (case‑insensitive, partial match allowed)
+                def find_col(col_name):
+                    col_name = col_name.lower()
+                    for i, h in enumerate(headers):
+                        if h.lower() == col_name:
+                            return i
+                    # fallback: partial match
+                    for i, h in enumerate(headers):
+                        if col_name in h.lower():
+                            return i
+                    return None
+
+                col_student_id = find_col('student id')
+                col_name = find_col('name')
+                col_roll = find_col('roll no')
+                col_father = find_col('father')  # matches 'father name' or 'father'
+                col_mobile = find_col('mobile')
+                col_address = find_col('adress')  # typo in your sheet
+                if col_address is None:
+                    col_address = find_col('address')
+                col_aadhaar = find_col('aadhar')  # matches 'aadhar no'
+
+                # Fallback: if not found, inform user
+                if None in [col_name, col_father, col_mobile, col_address, col_aadhaar]:
+                    st.error("Some required columns not found in Master sheet. Please check headers.")
+                    st.stop()
+
+                # Extract current values (ensure row_data length is sufficient)
+                def safe_get(idx):
+                    return row_data[idx] if idx < len(row_data) else ""
+                current_name = safe_get(col_name)
+                current_roll = safe_get(col_roll) if col_roll is not None else "N/A"
+                current_father = safe_get(col_father)
+                current_mobile = safe_get(col_mobile)
+                current_address = safe_get(col_address)
+                current_aadhaar = safe_get(col_aadhaar) if col_aadhaar is not None else ""
+
+                # Display non‑editable fields
+                st.info(f"**Student ID:** {s_id} | **Roll No:** {current_roll}")
+                st.write("---")
+
+                # Editable fields in a form
+                with st.form("edit_form"):
+                    new_name = st.text_input("Name", value=current_name)
+                    new_father = st.text_input("Father's Name", value=current_father)
+                    new_mobile = st.text_input("Mobile Number", value=current_mobile)
+                    new_address = st.text_input("Address", value=current_address)
+                    new_aadhaar = st.text_input("Aadhaar Number", value=current_aadhaar)
+
+                    if st.form_submit_button("Update Details"):
+                        # Update cells only if changed (to save API calls)
+                        updates = []
+                        if new_name != current_name:
+                            updates.append((col_name, new_name))
+                        if new_father != current_father:
+                            updates.append((col_father, new_father))
+                        if new_mobile != current_mobile:
+                            updates.append((col_mobile, new_mobile))
+                        if new_address != current_address:
+                            updates.append((col_address, new_address))
+                        if new_aadhaar != current_aadhaar and col_aadhaar is not None:
+                            updates.append((col_aadhaar, new_aadhaar))
+
+                        if not updates:
+                            st.info("No changes detected.")
+                        else:
+                            for col_idx, value in updates:
+                                master_sheet.update_cell(row_num, col_idx + 1, value)   # gspread uses 1-based index
+                            st.success("Student information updated successfully!")
+            except Exception as e:
+                st.error(f"Error loading student data: {e}")
