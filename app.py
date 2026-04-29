@@ -90,7 +90,7 @@ def find_class_sheet(class_num, sheet_type):
     return None
 
 # -----------------------------
-# 5. SIDEBAR & NAVIGATION (including new items)
+# 5. SIDEBAR & NAVIGATION
 # -----------------------------
 st.sidebar.header("Administration Panel")
 selected_class = st.sidebar.selectbox("Academic Class", ["7", "8", "9", "10", "11", "12"])
@@ -102,7 +102,7 @@ menu = st.sidebar.radio("Navigation", [
     "Student Records",
     "Edit Student Details",
     "Add New Student",
-    "At-Risk Students"            # ← Dropout Prediction
+    "At-Risk Students"
 ])
 
 if "office_auth" in st.session_state:
@@ -127,7 +127,7 @@ try:
         if not master_sheet: missing.append('Master')
         if not attendance_sheet: missing.append('Attendance')
         if not fees_sheet: missing.append('Fees')
-        st.error(f"❌ Missing sheets for Class {selected_class}: {', '.join(missing)}")
+        st.error(f"Missing sheets for Class {selected_class}: {', '.join(missing)}")
         st.stop()
 
     raw_data = master_sheet.get_all_values()
@@ -146,7 +146,7 @@ try:
             st.error("Master sheet must contain 'Student ID' and 'Name' columns.")
             student_list = []
 except Exception as e:
-    st.error(f"❌ Error loading sheets for Class {selected_class}:\n{e}\n{traceback.format_exc()}")
+    st.error(f"Error loading sheets for Class {selected_class}:\n{e}\n{traceback.format_exc()}")
     st.stop()
 
 # -----------------------------
@@ -192,7 +192,7 @@ if menu == "Student Attendance":
                         st.error(f"Update failed: {e}")
 
         with col2:
-            if st.button("✅ Mark All Present"):
+            if st.button("Mark All Present"):
                 try:
                     today = datetime.now().strftime("%d-%m-%Y")
                     hdrs = attendance_sheet.row_values(1)
@@ -213,7 +213,7 @@ if menu == "Student Attendance":
                     st.error(f"Error: {e}")
 
         with col3:
-            if st.button("⚠️ Mark Absent for Unmarked"):
+            if st.button("Mark Absent for Unmarked"):
                 try:
                     today = datetime.now().strftime("%d-%m-%Y")
                     hdrs = attendance_sheet.row_values(1)
@@ -285,14 +285,13 @@ elif menu == "Attendance Report":
 
                 def highlight_low(val):
                     return 'background-color: #ffcccc' if val < 75 else ''
-                st.dataframe(df_rep.style.applymap(highlight_low, subset=['Attendance %']), use_container_width=True)
+                st.dataframe(df_rep.style.map(highlight_low, subset=['Attendance %']), use_container_width=True)
 
-                # Excel Download
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     df_rep.to_excel(writer, index=False, sheet_name='Attendance')
                 st.download_button(
-                    label="📥 Download Excel Report",
+                    label="Download Excel Report",
                     data=buffer.getvalue(),
                     file_name=f"Attendance_Class{selected_class}_{sel_month}_{sel_year}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -316,7 +315,7 @@ elif menu == "Fee Collection":
                     m_cell = master_sheet.find(s_id)
                     m_row = master_sheet.row_values(m_cell.row)
                     current_fees = int(m_row[6]) if len(m_row) >= 7 and str(m_row[6]).isdigit() else 0
-                    st.info(f"**Student:** {m_row[1]} | **Father:** {m_row[3]} | **Total Paid:** ₹{current_fees}")
+                    st.info(f"**Student:** {m_row[1]} | **Father:** {m_row[3]} | **Total Paid:** INR {current_fees}")
 
                     with st.form("fee_form", clear_on_submit=True):
                         amount = st.number_input("Amount Received", min_value=0)
@@ -327,7 +326,7 @@ elif menu == "Fee Collection":
                             master_sheet.update_cell(m_cell.row, 7, str(new_total))
                             ts = datetime.now().strftime("%d-%m-%Y %H:%M")
                             fees_sheet.insert_row([s_id, amount, month, f"{ts} {mode}"], index=2)
-                            st.success(f"Payment of ₹{amount} recorded. New Total: ₹{new_total}")
+                            st.success(f"Payment of INR {amount} recorded. New Total: INR {new_total}")
                 except Exception as e:
                     st.error(f"Error: {e}")
 
@@ -349,7 +348,7 @@ elif menu == "Daily Cash Report":
                         st.info("No transactions recorded today.")
                     else:
                         tot = today_df['Amount'].sum()
-                        st.metric("Total Collection Today", f"₹{tot}")
+                        st.metric("Total Collection Today", f"INR {tot}")
                         st.dataframe(today_df[['Student ID','Amount','Month','Date of payment']])
                 else:
                     st.error("Fees sheet missing 'Date of payment' column.")
@@ -384,7 +383,7 @@ elif menu == "Student Records":
                     st.write(f"**Address:** {address}")
                 with c2:
                     st.write(f"**Mobile:** {mobile}")
-                    st.markdown(f"### Total Fees Paid: ₹{total_fees}")
+                    st.markdown(f"### Total Fees Paid: INR {total_fees}")
                 st.divider()
                 st.subheader("Fee Payment History")
                 all_fee_records = fees_sheet.get_all_values()
@@ -394,13 +393,12 @@ elif menu == "Student Records":
                     if history:
                         tdata = [fee_headers] + history
                         st.table(tdata)
-                        # Excel download for fee history
                         pdf_df = pd.DataFrame(history, columns=fee_headers)
                         buf = io.BytesIO()
                         with pd.ExcelWriter(buf, engine='xlsxwriter') as w:
                             pdf_df.to_excel(w, index=False, sheet_name='FeeHistory')
                         st.download_button(
-                            label="📥 Download Fee History (Excel)",
+                            label="Download Fee History (Excel)",
                             data=buf.getvalue(),
                             file_name=f"FeeHistory_{s_id}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -527,7 +525,7 @@ elif menu == "Add New Student":
         new_aadhaar = st.text_input("Aadhaar Number")
         if st.form_submit_button("Enroll Student"):
             if not new_name.strip() or not new_father.strip():
-                st.error("❌ Name and Father's Name are required.")
+                st.error("Name and Father's Name are required.")
             else:
                 new_row = [
                     new_id, new_name.strip(), str(new_roll), new_father.strip(),
@@ -538,7 +536,7 @@ elif menu == "Add New Student":
                 try:
                     master_sheet.append_row(new_row, value_input_option='USER_ENTERED')
                     attendance_sheet.append_row([new_id])
-                    st.success(f"✅ {new_name} enrolled!")
+                    st.success(f"Student {new_name} enrolled successfully!")
                     st.balloons()
                     st.cache_resource.clear()
                     st.rerun()
@@ -546,11 +544,11 @@ elif menu == "Add New Student":
                     st.error(f"Error: {e}")
 
 # =============================
-# 15. MODULE – AT‑RISK STUDENTS (Dropout Prediction)
+# 15. MODULE – AT-RISK STUDENTS (Dropout Prediction)
 # =============================
 elif menu == "At-Risk Students":
-    st.subheader(f"🚨 Dropout Risk Alert – Class {selected_class}")
-    st.caption("Students with 5+ consecutive absences (non‑'P' marks)")
+    st.subheader(f"Dropout Risk Alert – Class {selected_class}")
+    st.caption("Students with 5+ consecutive absences (non-'P' marks)")
 
     try:
         att_vals = attendance_sheet.get_all_values()
@@ -558,7 +556,6 @@ elif menu == "At-Risk Students":
             st.warning("No attendance data.")
         else:
             att_headers = att_vals[0]
-            # Sort date columns in chronological order
             date_map = {}
             for idx, h in enumerate(att_headers):
                 if idx == 0: continue
@@ -569,21 +566,20 @@ elif menu == "At-Risk Students":
                         date_map[idx] = d
                     except:
                         pass
-            sorted_cols = sorted(date_map.items(), key=lambda x: x[1])  # (col_idx, date)
+            sorted_cols = sorted(date_map.items(), key=lambda x: x[1])
 
             at_risk = []
-            for row_idx, row in enumerate(att_vals[1:], start=2):   # row numbers in sheet
+            for row_idx, row in enumerate(att_vals[1:], start=2):
                 sid = row[0]
                 name = "N/A"
                 mask = df_master[id_col].astype(str) == sid
                 if mask.any():
                     name = df_master.loc[mask, name_col].values[0]
-                # Determine absent sequence
                 max_consec = 0
                 current_streak = 0
                 for col_idx, _ in sorted_cols:
                     val = row[col_idx].strip().upper() if col_idx < len(row) else ""
-                    if val != 'P':   # absent or unmarked
+                    if val != 'P':
                         current_streak += 1
                     else:
                         current_streak = 0
@@ -594,7 +590,7 @@ elif menu == "At-Risk Students":
             if at_risk:
                 df_risk = pd.DataFrame(at_risk, columns=["Student ID", "Name", "Consecutive Absences"])
                 st.warning(f"Total students at risk: {len(at_risk)}")
-                st.dataframe(df_risk.style.applymap(lambda x: 'background-color: #ff4d4d' if isinstance(x, int) and x >= 5 else '', subset=['Consecutive Absences']))
+                st.dataframe(df_risk.style.map(lambda x: 'background-color: #ff4d4d' if isinstance(x, int) and x >= 5 else '', subset=['Consecutive Absences']))
             else:
                 st.success("No students with 5+ consecutive absences. Keep it up!")
     except Exception as e:
