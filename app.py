@@ -26,7 +26,7 @@ def check_main_password():
     return True
 
 def check_office_access():
-    """Returns True only if the Office PIN has been entered."""
+    """Office PIN required for financial sections."""
     if "office_auth" not in st.session_state:
         st.warning("Restricted: Office PIN required for financial operations.")
         pin = st.text_input("Enter Office PIN", type="password", key="office_pin")
@@ -59,6 +59,7 @@ def get_workbook():
         else:
             creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
         client = gspread.authorize(creds)
+        # Aapki Sheet ID
         return client.open_by_key("1fiAOXJUCMk_dlKfUbW6syEEHRREaMAnNaDIe0X0wboo")
     except Exception as e:
         st.error(f"Database Connection Error: {e}")
@@ -80,7 +81,7 @@ menu = st.sidebar.radio("Navigation", [
     "Student Records"
 ])
 
-# Office lock button (visible only when office section is unlocked)
+# Office lock button (visible only when unlocked)
 if "office_auth" in st.session_state:
     if st.sidebar.button("Lock Office Sections"):
         del st.session_state["office_auth"]
@@ -102,12 +103,13 @@ try:
     # Build student list for dropdown (ID - Name)
     all_records = master_sheet.get_all_records()
     df_master = pd.DataFrame(all_records)
+    # Ensure column names exactly match your Master sheet headers
     student_list = [
         f"{row['Student ID']} - {row['Name']}"
         for _, row in df_master.iterrows()
     ]
 except Exception as e:
-    st.error("Classes sheets not found. Please ensure tabs exist: "
+    st.error(f"Classes sheets not found. Please ensure tabs exist: "
              f"`Master_{selected_class}`, `Attendance_{selected_class}`, `Fees_{selected_class}`")
     st.stop()
 
@@ -160,7 +162,6 @@ elif menu == "Fee Collection":
 
         if selected_student != "-- Select --":
             s_id = selected_student.split(" - ")[0]
-            # Get current data from master
             try:
                 m_cell = master_sheet.find(s_id)
                 m_row = master_sheet.row_values(m_cell.row)
@@ -176,19 +177,20 @@ elif menu == "Fee Collection":
                     payment_mode = st.selectbox("Payment Mode", ["Cash", "Online", "Cheque"])
 
                     if st.form_submit_button("Process Payment"):
-                        # Update master (Column G = index 7)
                         new_total = current_fees + amount
+                        # Update master (Column G = index 7)
                         master_sheet.update_cell(m_cell.row, 7, str(new_total))
 
-                        # Log into Fees sheet
+                        # Log into Fees sheet (combine timestamp + mode as per your sheet)
                         timestamp = datetime.now().strftime("%d-%m-%Y %H:%M")
+                        combined_date = f"{timestamp} {payment_mode}"   # e.g., "27-04-2026 03:30 Cash"
                         fees_sheet.insert_row(
-                            [s_id, amount, month, timestamp, payment_mode],
+                            [s_id, amount, month, combined_date],
                             index=2
                         )
                         st.success(f"Payment of ₹{amount} recorded. New Total: ₹{new_total}")
             except Exception as e:
-                st.error("Student ID not found or sheet error.")
+                st.error(f"Student ID not found or sheet error: {e}")
 
 # =============================
 # 9. MODULE 3 – DAILY CASH REPORT
@@ -198,11 +200,15 @@ elif menu == "Daily Cash Report":
         st.subheader(f"Today's Financial Summary – Class {selected_class}")
         today_date = datetime.now().strftime("%d-%m-%Y")
         try:
+            # fees_sheet.get_all_records() returns dict with keys from first row headers
             data = fees_sheet.get_all_records()
             if data:
                 df = pd.DataFrame(data)
-                # Extract date part from Timestamp
-                df['Date'] = df['Timestamp'].apply(lambda x: str(x).split(' ')[0] if x else "")
+                # We have columns: Student ID, Amount, Month, Date of payment
+                # Extract just the date part (before first space)
+                df['Date'] = df['Date of payment'].apply(
+                    lambda x: str(x).split(' ')[0] if x else ""
+                )
                 today_df = df[df['Date'] == today_date]
 
                 if today_df.empty:
@@ -210,7 +216,7 @@ elif menu == "Daily Cash Report":
                 else:
                     total_amount = today_df['Amount'].sum()
                     st.metric("Total Collection Today", f"₹{total_amount}")
-                    st.dataframe(today_df[['Student ID','Amount','Month','Timestamp','Payment Mode']])
+                    st.dataframe(today_df[['Student ID','Amount','Month','Date of payment']])
             else:
                 st.info("No fee records yet.")
         except Exception as e:
@@ -226,7 +232,6 @@ elif menu == "Student Records":
     if selected_student != "-- Select --":
         s_id = selected_student.split(" - ")[0]
         try:
-            # Get master row by index using dataframe
             student_data = df_master[df_master['Student ID'].astype(str) == s_id].iloc[0]
             name = student_data.get('Name','')
             roll = student_data.get('Roll No','')
@@ -247,11 +252,12 @@ elif menu == "Student Records":
             st.divider()
             st.subheader("Fee Payment History")
             all_fee_records = fees_sheet.get_all_values()
-            history = [r for r in all_fee_records if r[0] == s_id]
+            # Skip header row if present
+            history = [r for r in all_fee_records[1:] if r[0].upper() == s_id.upper()]
             if history:
-                # Remove header if included
-                st.table(history)
+                # Display headers + history
+                st.table([all_fee_records[0]] + history)
             else:
                 st.write("No payment history found.")
         except Exception as e:
-            st.warning("Student data not found or sheet misconfigured.")
+            st.warning(f"Student data not found or sheet misconfigured: {e}")
