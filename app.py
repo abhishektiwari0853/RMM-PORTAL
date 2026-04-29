@@ -11,6 +11,86 @@ import io
 # -----------------------------
 st.set_page_config(page_title="RMM Administrative Portal", page_icon="🏫", layout="wide")
 
+# =====================================================================
+# GLOBAL CUSTOM CSS – Glassmorphism + Dark Premium Theme
+# =====================================================================
+st.markdown("""
+<style>
+/* ---------- Glass Cards ---------- */
+div[data-testid="stVerticalBlock"] > div {
+    background: rgba(30, 41, 59, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- Buttons ---------- */
+.stButton > button {
+    border-radius: 12px;
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+    border: none;
+    color: white;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+    padding: 10px 24px;
+}
+.stButton > button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.4);
+    background: linear-gradient(135deg, #2d5a87 0%, #1e3a5f 100%);
+}
+
+/* ---------- Sidebar ---------- */
+section[data-testid="stSidebar"] {
+    background-color: #0f172a;
+    border-right: 1px solid #1e293b;
+}
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+    color: #e2e8f0;
+}
+section[data-testid="stSidebar"] .stSelectbox label {
+    color: #e2e8f0 !important;
+}
+
+/* ---------- Input Fields ---------- */
+.stTextInput input, .stNumberInput input, .stSelectbox select {
+    background-color: #1e293b !important;
+    border: 1px solid #334155 !important;
+    border-radius: 10px !important;
+    color: white !important;
+}
+
+/* ---------- Tables ---------- */
+.stTable tbody tr:nth-child(even) {
+    background-color: rgba(30, 41, 59, 0.5);
+}
+
+/* ---------- Metric Cards ---------- */
+[data-testid="metric-container"] {
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    border-radius: 20px;
+    border: 1px solid #334155;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+[data-testid="metric-container"] label {
+    color: #94a3b8 !important;
+    font-size: 13px;
+    font-weight: 500;
+}
+[data-testid="metric-container"] div[data-testid="stMetricValue"] {
+    font-size: 34px !important;
+    font-weight: 800;
+    color: #fbbf24 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # -----------------------------
 # 2. ROLE-BASED LOGIN (No Office PIN)
 # -----------------------------
@@ -19,7 +99,7 @@ if "authenticated" not in st.session_state:
     st.session_state["role"] = None
 
 if not st.session_state["authenticated"]:
-    st.markdown("<h2 style='text-align: center;'>School Portal Login</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #fbbf24;'>School Portal Login</h2>", unsafe_allow_html=True)
     role = st.selectbox("Select Role", ["Teacher", "Clerk", "Principal"])
     pwd = st.text_input("Password", type="password")
     if st.button("Login"):
@@ -204,7 +284,7 @@ master_sheet = find_class_sheet(selected_class, 'Master')
 attendance_sheet = find_class_sheet(selected_class, 'Attendance')
 fees_sheet = find_class_sheet(selected_class, 'Fees')
 if not all([master_sheet, attendance_sheet, fees_sheet]):
-    st.error("Required class sheets missing.")
+    st.error("Required class sheets missing. Please check tab names.")
     st.stop()
 
 # -----------------------------
@@ -216,8 +296,8 @@ with col2:
         st.image("School_logo.png", width=180)
     except:
         st.caption("School Logo not found")
-st.markdown("<h1 style='text-align: center;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center; color: gray;'>Administrative Management System</h4>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #fbbf24;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center; color: #94a3b8;'>Administrative Management System</h4>", unsafe_allow_html=True)
 st.divider()
 
 # =============================
@@ -269,16 +349,14 @@ if menu == "Executive Dashboard" and role == "Principal":
                     except:
                         pass
 
-        # Expected Monthly Fee (from fee structure)
         monthly_fee = monthly_fee_map.get(selected_class, 500)
         expected_monthly = total_students * monthly_fee
         collection_pct = (month_collection / expected_monthly * 100) if expected_monthly > 0 else 0
 
         # Top 5 Defaulters (simplified)
-        if fees_data and len(fees_data) > 1:
+        if not df_master.empty:
             def calc_outstanding(row):
                 total_paid = int(row['Total_Fees']) if 'Total_Fees' in row and str(row['Total_Fees']).isdigit() else 0
-                # rough expected based on months from April
                 if current_month >= 4:
                     months = current_month - 4 + 1
                 else:
@@ -294,7 +372,6 @@ if menu == "Executive Dashboard" and role == "Principal":
         # At-Risk count (simplified)
         at_risk_count = 0
         if attendance_data and len(attendance_data) > 1:
-            # compute max consecutive absences for each student
             for row in attendance_data[1:]:
                 max_consec = 0
                 streak = 0
@@ -328,7 +405,7 @@ if menu == "Executive Dashboard" and role == "Principal":
             st.metric("At-Risk Students (5+ consec. absences)", at_risk_count)
 
 # =============================
-# 9. STUDENT ATTENDANCE (All access)
+# 9. STUDENT ATTENDANCE
 # =============================
 elif menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
@@ -404,9 +481,9 @@ elif menu == "Student Attendance":
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-# -----------------------------
-# 10. ATTENDANCE REPORT (Teacher, Principal)
-# -----------------------------
+# =============================
+# 10. ATTENDANCE REPORT
+# =============================
 elif menu == "Attendance Report":
     st.subheader(f"Monthly Attendance Report – Class {selected_class}")
     months = ["January","February","March","April","May","June","July","August","September","October","November","December"]
@@ -463,11 +540,10 @@ elif menu == "Attendance Report":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-# -----------------------------
+# =============================
 # 11. FEE COLLECTION (Clerk, Principal)
-# -----------------------------
+# =============================
 elif menu == "Fee Collection":
-    # Only clerk and principal have this menu, but added check for safety
     if role not in ["Clerk", "Principal"]:
         st.error("Access Denied")
         st.stop()
@@ -498,9 +574,9 @@ elif menu == "Fee Collection":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-# -----------------------------
+# =============================
 # 12. DAILY CASH REPORT (Clerk, Principal)
-# -----------------------------
+# =============================
 elif menu == "Daily Cash Report":
     if role not in ["Clerk", "Principal"]:
         st.error("Access Denied")
@@ -526,9 +602,9 @@ elif menu == "Daily Cash Report":
     else:
         st.info("No fee records yet.")
 
-# -----------------------------
+# =============================
 # 13. DEFAULTER LIST (Clerk, Principal)
-# -----------------------------
+# =============================
 elif menu == "Defaulter List":
     if role not in ["Clerk", "Principal"]:
         st.error("Access Denied")
@@ -581,9 +657,9 @@ elif menu == "Defaulter List":
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-# -----------------------------
-# 14. STUDENT RECORDS (All roles)
-# -----------------------------
+# =============================
+# 14. STUDENT RECORDS (All)
+# =============================
 elif menu == "Student Records":
     st.subheader(f"Student Profile – Class {selected_class}")
     if not student_list:
@@ -633,9 +709,9 @@ elif menu == "Student Records":
             else:
                 st.warning("Student not found.")
 
-# -----------------------------
+# =============================
 # 15. EDIT STUDENT DETAILS (Teacher, Principal)
-# -----------------------------
+# =============================
 elif menu == "Edit Student Details":
     st.subheader(f"Edit Student Information – Class {selected_class}")
     if not student_list:
@@ -706,9 +782,9 @@ elif menu == "Edit Student Details":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-# -----------------------------
+# =============================
 # 16. ADD NEW STUDENT (All roles)
-# -----------------------------
+# =============================
 elif menu == "Add New Student":
     st.subheader(f"Enroll New Student – Class {selected_class}")
     existing_ids = []
@@ -767,9 +843,9 @@ elif menu == "Add New Student":
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-# -----------------------------
+# =============================
 # 17. AT-RISK STUDENTS (Teacher, Principal)
-# -----------------------------
+# =============================
 elif menu == "At-Risk Students":
     st.subheader(f"Dropout Risk Alert – Class {selected_class}")
     if len(attendance_data) < 2:
