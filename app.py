@@ -3,7 +3,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import pandas as pd
-import traceback   # <-- naya
+import traceback
 
 # -----------------------------
 # 1. CONFIGURATION
@@ -61,7 +61,7 @@ def get_workbook():
         client = gspread.authorize(creds)
         return client.open_by_key("1fiAOXJUCMk_dlKfUbW6syEEHRREaMAnNaDIe0X0wboo")
     except Exception as e:
-        st.error(f"Connection Error: {e}\n\n{traceback.format_exc()}")
+        st.error(f"Connection Error: {e}")
         return None
 
 wb = get_workbook()
@@ -90,32 +90,39 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # -----------------------------
-# 5. LOAD CLASS SHEETS (BETTER ERROR HANDLING)
+# 5. LOAD CLASS SHEETS (Duplicate‑safe)
 # -----------------------------
 try:
-    # Pehle check karo ki worksheets exist karte hain ya nahi
     sheet_names = [ws.title for ws in wb.worksheets()]
     required = [f"Master_{selected_class}", f"Attendance_{selected_class}", f"Fees_{selected_class}"]
     for req in required:
         if req not in sheet_names:
-            st.error(f"❌ Sheet '{req}' not found in Google Sheets. Available sheets: {sheet_names}")
+            st.error(f"❌ Sheet '{req}' not found. Available: {sheet_names}")
             st.stop()
 
     master_sheet = wb.worksheet(f"Master_{selected_class}")
     attendance_sheet = wb.worksheet(f"Attendance_{selected_class}")
     fees_sheet = wb.worksheet(f"Fees_{selected_class}")
 
-    # Student list banane ke liye data lo
-    all_records = master_sheet.get_all_records()
-    if len(all_records) == 0:
-        st.warning("Master sheet has no data rows. Please add students with headers.")
+    # ---------- SAFE DATA READING (duplicates allowed) ----------
+    raw_data = master_sheet.get_all_values()
+    if len(raw_data) < 2:
+        st.warning("Master sheet has no data rows. Please add students and headers.")
         student_list = []
     else:
-        df_master = pd.DataFrame(all_records)
-        student_list = [
-            f"{row['Student ID']} - {row['Name']}"
-            for _, row in df_master.iterrows()
-        ]
+        headers = raw_data[0]
+        # Create DataFrame manually (ignore duplicate column issue)
+        df_master = pd.DataFrame(raw_data[1:], columns=headers)
+        # Build student list: "ID - Name" (columns: 'Student ID', 'Name')
+        if 'Student ID' in df_master.columns and 'Name' in df_master.columns:
+            student_list = [
+                f"{row['Student ID']} - {row['Name']}"
+                for _, row in df_master.iterrows()
+            ]
+        else:
+            st.error("Master sheet must contain 'Student ID' and 'Name' columns.")
+            student_list = []
+
 except Exception as e:
     st.error(f"❌ Error loading sheets for Class {selected_class}:\n\n{e}\n\n{traceback.format_exc()}")
     st.stop()
@@ -140,7 +147,7 @@ st.divider()
 if menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
     if not student_list:
-        st.warning("No students found. Please add data in Master sheet.")
+        st.warning("No students found.")
     else:
         selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
 
@@ -178,6 +185,7 @@ elif menu == "Fee Collection":
                 try:
                     m_cell = master_sheet.find(s_id)
                     m_row = master_sheet.row_values(m_cell.row)
+                    # Total_Fees is in column G (index 6)
                     current_fees = int(m_row[6]) if len(m_row) >= 7 and str(m_row[6]).isdigit() else 0
                     st.info(f"**Student:** {m_row[1]} | **Father:** {m_row[3]} | **Total Paid:** ₹{current_fees}")
 
@@ -214,16 +222,20 @@ elif menu == "Daily Cash Report":
             data = fees_sheet.get_all_records()
             if data:
                 df = pd.DataFrame(data)
-                df['Date'] = df['Date of payment'].apply(
-                    lambda x: str(x).split(' ')[0] if x else ""
-                )
-                today_df = df[df['Date'] == today_date]
-                if today_df.empty:
-                    st.info("No transactions recorded today.")
+                # If Date of payment column exists
+                if 'Date of payment' in df.columns:
+                    df['Date'] = df['Date of payment'].apply(
+                        lambda x: str(x).split(' ')[0] if x else ""
+                    )
+                    today_df = df[df['Date'] == today_date]
+                    if today_df.empty:
+                        st.info("No transactions recorded today.")
+                    else:
+                        total_amount = today_df['Amount'].sum()
+                        st.metric("Total Collection Today", f"₹{total_amount}")
+                        st.dataframe(today_df[['Student ID','Amount','Month','Date of payment']])
                 else:
-                    total_amount = today_df['Amount'].sum()
-                    st.metric("Total Collection Today", f"₹{total_amount}")
-                    st.dataframe(today_df[['Student ID','Amount','Month','Date of payment']])
+                    st.error("Fees sheet missing 'Date of payment' column.")
             else:
                 st.info("No fee records yet.")
         except Exception as e:
