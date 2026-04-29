@@ -4,6 +4,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import pandas as pd
 import traceback
+import re
 
 # -----------------------------
 # 1. CONFIGURATION
@@ -72,13 +73,11 @@ if wb is None:
 # 4. SMART SHEET FINDER
 # -----------------------------
 def find_class_sheet(class_num, sheet_type):
-    """Returns worksheet object or None. Tolerates typos like 'Attendence'."""
     all_sheets = wb.worksheets()
     exact_name = f"{sheet_type}_{class_num}"
     for ws in all_sheets:
         if ws.title.strip() == exact_name:
             return ws
-    # Fallback: partial match
     for ws in all_sheets:
         title = ws.title.strip().lower()
         target = sheet_type.lower()
@@ -100,7 +99,8 @@ menu = st.sidebar.radio("Navigation", [
     "Fee Collection",
     "Daily Cash Report",
     "Student Records",
-    "Edit Student Details"           # ← Naya menu
+    "Edit Student Details",
+    "Add New Student"           # ← Naya feature
 ])
 
 if "office_auth" in st.session_state:
@@ -128,16 +128,14 @@ try:
         st.error(f"❌ Missing sheets for Class {selected_class}: {', '.join(missing)}")
         st.stop()
 
-    # Read master data (handles duplicate columns)
     raw_data = master_sheet.get_all_values()
     if len(raw_data) < 2:
         st.warning("Master sheet has no data rows. Please add students and headers.")
         student_list = []
+        df_master = pd.DataFrame()
     else:
-        headers = [h.strip() for h in raw_data[0]]          # clean headers
+        headers = [h.strip() for h in raw_data[0]]
         df_master = pd.DataFrame(raw_data[1:], columns=headers)
-
-        # Find columns for ID and Name (case‑insensitive)
         id_col = next((c for c in df_master.columns if c.lower() == 'student id'), None)
         name_col = next((c for c in df_master.columns if c.lower() == 'name'), None)
         if id_col and name_col:
@@ -163,7 +161,7 @@ st.markdown("<h4 style='text-align: center; color: gray;'>Administrative Managem
 st.divider()
 
 # =============================
-# 8. MODULE – ATTENDANCE
+# 8. ATTENDANCE
 # =============================
 if menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
@@ -178,9 +176,9 @@ if menu == "Student Attendance":
                 s_id = selected_student.split(" - ")[0]
                 try:
                     today = datetime.now().strftime("%d-%m-%Y")
-                    headers = attendance_sheet.row_values(1)
-                    col_idx = headers.index(today) + 1 if today in headers else len(headers) + 1
-                    if today not in headers:
+                    headers_att = attendance_sheet.row_values(1)
+                    col_idx = headers_att.index(today) + 1 if today in headers_att else len(headers_att) + 1
+                    if today not in headers_att:
                         attendance_sheet.update_cell(1, col_idx, today)
                     cell = attendance_sheet.find(s_id)
                     attendance_sheet.update_cell(cell.row, col_idx, "P")
@@ -189,7 +187,7 @@ if menu == "Student Attendance":
                     st.error(f"Update failed: {e}")
 
 # =============================
-# 9. MODULE – FEE COLLECTION
+# 9. FEE COLLECTION
 # =============================
 elif menu == "Fee Collection":
     if check_office_access():
@@ -224,7 +222,7 @@ elif menu == "Fee Collection":
                     st.error(f"Error: {e}")
 
 # =============================
-# 10. MODULE – DAILY CASH REPORT
+# 10. DAILY CASH REPORT
 # =============================
 elif menu == "Daily Cash Report":
     if check_office_access():
@@ -251,7 +249,7 @@ elif menu == "Daily Cash Report":
             st.error(f"Error: {e}")
 
 # =============================
-# 11. MODULE – STUDENT RECORDS
+# 11. STUDENT RECORDS
 # =============================
 elif menu == "Student Records":
     st.subheader(f"Student Profile – Class {selected_class}")
@@ -289,7 +287,7 @@ elif menu == "Student Records":
                 st.warning(f"Error: {e}")
 
 # =============================
-# 12. MODULE – EDIT STUDENT DETAILS (NO OFFICE PIN)
+# 12. EDIT STUDENT DETAILS
 # =============================
 elif menu == "Edit Student Details":
     st.subheader(f"Edit Student Information – Class {selected_class}")
@@ -299,81 +297,144 @@ elif menu == "Edit Student Details":
         selected_student = st.selectbox("Choose Student to Edit", ["-- Select --"] + student_list)
         if selected_student != "-- Select --":
             s_id = selected_student.split(" - ")[0]
-            # Get current data from master sheet (using row_values to ensure correct order)
             try:
                 cell = master_sheet.find(s_id)
                 row_num = cell.row
-                row_data = master_sheet.row_values(row_num)   # exact list from sheet
-                headers = [h.strip() for h in master_sheet.row_values(1)]   # header row
+                row_data = master_sheet.row_values(row_num)
+                headers_edit = [h.strip() for h in master_sheet.row_values(1)]
 
-                # Helper to find column index (case‑insensitive, partial match allowed)
                 def find_col(col_name):
                     col_name = col_name.lower()
-                    for i, h in enumerate(headers):
+                    for i, h in enumerate(headers_edit):
                         if h.lower() == col_name:
                             return i
-                    # fallback: partial match
-                    for i, h in enumerate(headers):
+                    for i, h in enumerate(headers_edit):
                         if col_name in h.lower():
                             return i
                     return None
 
-                col_student_id = find_col('student id')
                 col_name = find_col('name')
-                col_roll = find_col('roll no')
-                col_father = find_col('father')  # matches 'father name' or 'father'
+                col_father = find_col('father')
                 col_mobile = find_col('mobile')
-                col_address = find_col('adress')  # typo in your sheet
-                if col_address is None:
-                    col_address = find_col('address')
-                col_aadhaar = find_col('aadhar')  # matches 'aadhar no'
+                col_address = find_col('adress')
+                if col_address is None: col_address = find_col('address')
+                col_aadhaar = find_col('aadhar')
 
-                # Fallback: if not found, inform user
-                if None in [col_name, col_father, col_mobile, col_address, col_aadhaar]:
-                    st.error("Some required columns not found in Master sheet. Please check headers.")
-                    st.stop()
-
-                # Extract current values (ensure row_data length is sufficient)
                 def safe_get(idx):
                     return row_data[idx] if idx < len(row_data) else ""
                 current_name = safe_get(col_name)
-                current_roll = safe_get(col_roll) if col_roll is not None else "N/A"
+                current_roll = safe_get(find_col('roll no')) if find_col('roll no') else "N/A"
                 current_father = safe_get(col_father)
                 current_mobile = safe_get(col_mobile)
                 current_address = safe_get(col_address)
-                current_aadhaar = safe_get(col_aadhaar) if col_aadhaar is not None else ""
+                current_aadhaar = safe_get(col_aadhaar) if col_aadhaar else ""
 
-                # Display non‑editable fields
                 st.info(f"**Student ID:** {s_id} | **Roll No:** {current_roll}")
                 st.write("---")
-
-                # Editable fields in a form
                 with st.form("edit_form"):
                     new_name = st.text_input("Name", value=current_name)
                     new_father = st.text_input("Father's Name", value=current_father)
                     new_mobile = st.text_input("Mobile Number", value=current_mobile)
                     new_address = st.text_input("Address", value=current_address)
                     new_aadhaar = st.text_input("Aadhaar Number", value=current_aadhaar)
-
                     if st.form_submit_button("Update Details"):
-                        # Update cells only if changed (to save API calls)
                         updates = []
-                        if new_name != current_name:
+                        if new_name != current_name and col_name is not None:
                             updates.append((col_name, new_name))
-                        if new_father != current_father:
+                        if new_father != current_father and col_father is not None:
                             updates.append((col_father, new_father))
-                        if new_mobile != current_mobile:
+                        if new_mobile != current_mobile and col_mobile is not None:
                             updates.append((col_mobile, new_mobile))
-                        if new_address != current_address:
+                        if new_address != current_address and col_address is not None:
                             updates.append((col_address, new_address))
                         if new_aadhaar != current_aadhaar and col_aadhaar is not None:
                             updates.append((col_aadhaar, new_aadhaar))
-
                         if not updates:
                             st.info("No changes detected.")
                         else:
                             for col_idx, value in updates:
-                                master_sheet.update_cell(row_num, col_idx + 1, value)   # gspread uses 1-based index
-                            st.success("Student information updated successfully!")
+                                master_sheet.update_cell(row_num, col_idx + 1, value)
+                            st.success("Student details updated successfully!")
             except Exception as e:
-                st.error(f"Error loading student data: {e}")
+                st.error(f"Error: {e}")
+
+# =============================
+# 13. ADD NEW STUDENT (AUTO ID & ROLL)
+# =============================
+elif menu == "Add New Student":
+    st.subheader(f"Enroll New Student – Class {selected_class}")
+
+    # Extract all IDs for this class to generate next ID
+    existing_ids = []
+    existing_rolls = []
+    if not df_master.empty:
+        # Get column names case-insensitive
+        id_col_name = next((c for c in df_master.columns if c.lower() == 'student id'), None)
+        roll_col_name = next((c for c in df_master.columns if c.lower() == 'roll no'), None)
+        if id_col_name:
+            existing_ids = df_master[id_col_name].astype(str).tolist()
+        if roll_col_name:
+            try:
+                existing_rolls = df_master[roll_col_name].astype(int).tolist()
+            except:
+                existing_rolls = []
+
+    # Auto-generate Student ID: RMEC + class + next number
+    prefix = f"RMEC{selected_class}"
+    max_seq = 0
+    for sid in existing_ids:
+        if sid.startswith(prefix):
+            num_part = sid[len(prefix):]
+            if num_part.isdigit():
+                max_seq = max(max_seq, int(num_part))
+    new_id = f"{prefix}{max_seq + 1:03d}"   # e.g., RMEC7001 if max was 0
+
+    # Auto-generate Roll No: max existing + 1
+    new_roll = 1
+    if existing_rolls:
+        new_roll = max(existing_rolls) + 1
+
+    with st.form("add_student_form", clear_on_submit=True):
+        st.markdown("**Student ID (auto‑generated)**")
+        st.info(new_id)
+        st.markdown("**Roll Number (auto‑generated)**")
+        st.info(str(new_roll))
+        new_name = st.text_input("Full Name *")
+        new_father = st.text_input("Father's Name *")
+        new_mobile = st.text_input("Mobile Number")
+        new_address = st.text_input("Address")
+        new_aadhaar = st.text_input("Aadhaar Number")
+        st.markdown("*marked fields are mandatory")
+
+        if st.form_submit_button("Enroll Student"):
+            if not new_name.strip() or not new_father.strip():
+                st.error("❌ Student Name and Father's Name are required.")
+            else:
+                # Prepare new row according to Master sheet column order
+                # We know the column mapping: A-J: ID, Name, Roll No, Father Name, Node, Mobile, Total_Fees, Address, Node, Aadhar
+                new_row = [
+                    new_id,
+                    new_name.strip(),
+                    str(new_roll),
+                    new_father.strip(),
+                    "",                    # Node (blank)
+                    new_mobile.strip() if new_mobile else "",
+                    "0",                   # Total_Fees initially 0
+                    new_address.strip() if new_address else "",
+                    "",                    # second Node (blank)
+                    new_aadhaar.strip() if new_aadhaar else ""
+                ]
+                try:
+                    master_sheet.append_row(new_row, value_input_option='USER_ENTERED')
+                    # Also add the new student to the Attendance sheet (just ID in first column)
+                    attendance_sheet.append_row([new_id])
+
+                    st.success(f"✅ Student {new_name} ({new_id}) enrolled successfully!")
+                    st.balloons()
+                    # Clear cache to refresh data next time
+                    st.cache_resource.clear()
+                    # Auto-refresh after 2 seconds
+                    st.write("Refreshing data...")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Failed to add student: {e}")
