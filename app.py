@@ -72,22 +72,20 @@ if wb is None:
 # -----------------------------
 # 4. SMART SHEET FINDER
 # -----------------------------
-def find_class_sheet(class_num, sheet_type):
+def find_sheet(name):
+    """Return worksheet with exact or partial match (case‑insensitive)."""
     all_sheets = wb.worksheets()
-    exact_name = f"{sheet_type}_{class_num}"
+    name_clean = name.strip().lower()
     for ws in all_sheets:
-        if ws.title.strip() == exact_name:
+        if ws.title.strip().lower() == name_clean:
             return ws
     for ws in all_sheets:
-        title = ws.title.strip().lower()
-        target = sheet_type.lower()
-        if target == 'attendance' and 'attend' in title and str(class_num) in title:
-            return ws
-        elif target == 'master' and 'master' in title and str(class_num) in title:
-            return ws
-        elif target == 'fees' and 'fees' in title and str(class_num) in title:
+        if name_clean in ws.title.strip().lower():
             return ws
     return None
+
+def find_class_sheet(class_num, sheet_type):
+    return find_sheet(f"{sheet_type}_{class_num}")
 
 # -----------------------------
 # 5. SIDEBAR & NAVIGATION
@@ -99,6 +97,7 @@ menu = st.sidebar.radio("Navigation", [
     "Attendance Report",
     "Fee Collection",
     "Daily Cash Report",
+    "Defaulter List",               # <-- Naya
     "Student Records",
     "Edit Student Details",
     "Add New Student",
@@ -115,12 +114,13 @@ if st.sidebar.button("Logout"):
     st.rerun()
 
 # -----------------------------
-# 6. LOAD CLASS SHEETS + STUDENT LIST
+# 6. LOAD DATA (Master, Attendance, Fees, Fee Structure)
 # -----------------------------
 try:
     master_sheet = find_class_sheet(selected_class, 'Master')
     attendance_sheet = find_class_sheet(selected_class, 'Attendance')
     fees_sheet = find_class_sheet(selected_class, 'Fees')
+    fee_structure_sheet = find_sheet("Fee_Structure")   # global sheet
 
     if not all([master_sheet, attendance_sheet, fees_sheet]):
         missing = []
@@ -130,9 +130,10 @@ try:
         st.error(f"Missing sheets for Class {selected_class}: {', '.join(missing)}")
         st.stop()
 
+    # Master data
     raw_data = master_sheet.get_all_values()
     if len(raw_data) < 2:
-        st.warning("Master sheet has no data rows. Please add students and headers.")
+        st.warning("Master sheet has no data rows.")
         student_list = []
         df_master = pd.DataFrame()
     else:
@@ -145,8 +146,22 @@ try:
         else:
             st.error("Master sheet must contain 'Student ID' and 'Name' columns.")
             student_list = []
+
+    # Fee structure (global)
+    monthly_fee_map = {}
+    if fee_structure_sheet:
+        fee_data = fee_structure_sheet.get_all_values()
+        if len(fee_data) >= 2:
+            for row in fee_data[1:]:
+                if len(row) >= 2:
+                    cls, fee = row[0].strip(), row[1].strip()
+                    if cls.isdigit():
+                        monthly_fee_map[cls] = int(fee) if fee.isdigit() else 0
+    # Fallback if fee structure not defined for selected class
+    default_monthly_fee = monthly_fee_map.get(selected_class, 500)
+
 except Exception as e:
-    st.error(f"Error loading sheets for Class {selected_class}:\n{e}\n{traceback.format_exc()}")
+    st.error(f"Error loading data: {e}\n{traceback.format_exc()}")
     st.stop()
 
 # -----------------------------
@@ -163,7 +178,7 @@ st.markdown("<h4 style='text-align: center; color: gray;'>Administrative Managem
 st.divider()
 
 # =============================
-# 8. MODULE – STUDENT ATTENDANCE (with Mark All & Auto Absent)
+# 8. MODULE – STUDENT ATTENDANCE
 # =============================
 if menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
@@ -218,7 +233,7 @@ if menu == "Student Attendance":
                     today = datetime.now().strftime("%d-%m-%Y")
                     hdrs = attendance_sheet.row_values(1)
                     if today not in hdrs:
-                        st.warning("Today's column not created yet. Mark at least one student first.")
+                        st.warning("Today's column not created yet.")
                     else:
                         col_idx = hdrs.index(today) + 1
                         all_ids = [f"{row[id_col]}" for _, row in df_master.iterrows()]
@@ -237,7 +252,7 @@ if menu == "Student Attendance":
                     st.error(f"Error: {e}")
 
 # =============================
-# 9. MODULE – ATTENDANCE REPORT (with Excel Download)
+# 9. MODULE – ATTENDANCE REPORT
 # =============================
 elif menu == "Attendance Report":
     st.subheader(f"Monthly Attendance Report – Class {selected_class}")
@@ -282,7 +297,6 @@ elif menu == "Attendance Report":
                         "Attendance %": round(percent, 1)
                     })
                 df_rep = pd.DataFrame(records)
-
                 def highlight_low(val):
                     return 'background-color: #ffcccc' if val < 75 else ''
                 st.dataframe(df_rep.style.map(highlight_low, subset=['Attendance %']), use_container_width=True)
@@ -358,7 +372,87 @@ elif menu == "Daily Cash Report":
             st.error(f"Error: {e}")
 
 # =============================
-# 12. MODULE – STUDENT RECORDS (with Fee History Excel Download)
+# 12. MODULE – DEFAULTER LIST
+# =============================
+elif menu == "Defaulter List":
+    if check_office_access():
+        st.subheader(f"Fee Defaulter List – Class {selected_class}")
+        if not student_list:
+            st.warning("No students found.")
+        else:
+            # Calculate months from April to current month
+            current_date = datetime.now()
+            current_month = current_date.month
+            current_year = current_date.year
+            if current_month >= 4:
+                months_count = current_month - 4 + 1
+            else:
+                months_count = current_month + 9   # (12 - 4 + 1) + current_month
+
+            monthly_fee = monthly_fee_map.get(selected_class, default_monthly_fee)
+            expected_total = months_count * monthly_fee
+
+            # Build list with outstanding balances
+            defaulter_list = []
+            for _, student in df_master.iterrows():
+                sid = str(student[id_col])
+                name = student[name_col]
+                total_paid = int(student.get('Total_Fees', 0)) if str(student.get('Total_Fees', 0)).isdigit() else 0
+                outstanding = max(0, expected_total - total_paid)
+
+                # Find last paid date from fees history
+                last_date = "N/A"
+                try:
+                    all_fee_rows = fees_sheet.get_all_values()
+                    if len(all_fee_rows) > 1:
+                        dates = []
+                        for row in all_fee_rows[1:]:
+                            if row[0].upper() == sid.upper():
+                                date_str = row[3] if len(row) > 3 else ""
+                                if date_str:
+                                    dates.append(date_str.split(' ')[0])   # first part date
+                        if dates:
+                            last_date = max(dates)
+                except:
+                    pass
+
+                defaulter_list.append({
+                    "Student ID": sid,
+                    "Name": name,
+                    "Total Paid": total_paid,
+                    "Expected Total": expected_total,
+                    "Outstanding": outstanding,
+                    "Last Paid Date": last_date
+                })
+
+            df_def = pd.DataFrame(defaulter_list)
+            # Sort by outstanding descending
+            df_def = df_def.sort_values("Outstanding", ascending=False)
+
+            # Color coding
+            def highlight_out(val):
+                if val > 1000:
+                    return 'background-color: #ff4d4d'
+                elif val > 0:
+                    return 'background-color: #ffff99'
+                return ''
+            styled = df_def.style.map(highlight_out, subset=['Outstanding'])
+
+            st.dataframe(styled, use_container_width=True)
+
+            # Excel download
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                df_def.to_excel(writer, index=False, sheet_name='Defaulters')
+            st.download_button(
+                label="Download Defaulter List (Excel)",
+                data=buffer.getvalue(),
+                file_name=f"Defaulters_Class{selected_class}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+# =============================
+# 13. MODULE – STUDENT RECORDS
 # =============================
 elif menu == "Student Records":
     st.subheader(f"Student Profile – Class {selected_class}")
@@ -411,7 +505,7 @@ elif menu == "Student Records":
                 st.warning(f"Error: {e}")
 
 # =============================
-# 13. MODULE – EDIT STUDENT DETAILS
+# 14. MODULE – EDIT STUDENT DETAILS
 # =============================
 elif menu == "Edit Student Details":
     st.subheader(f"Edit Student Information – Class {selected_class}")
@@ -483,7 +577,7 @@ elif menu == "Edit Student Details":
                 st.error(f"Error: {e}")
 
 # =============================
-# 14. MODULE – ADD NEW STUDENT
+# 15. MODULE – ADD NEW STUDENT
 # =============================
 elif menu == "Add New Student":
     st.subheader(f"Enroll New Student – Class {selected_class}")
@@ -544,7 +638,7 @@ elif menu == "Add New Student":
                     st.error(f"Error: {e}")
 
 # =============================
-# 15. MODULE – AT-RISK STUDENTS (Dropout Prediction)
+# 16. MODULE – AT-RISK STUDENTS
 # =============================
 elif menu == "At-Risk Students":
     st.subheader(f"Dropout Risk Alert – Class {selected_class}")
