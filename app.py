@@ -13,23 +13,30 @@ from streamlit_option_menu import option_menu
 st.set_page_config(page_title="RMM Administrative Portal", page_icon="🏫", layout="wide")
 
 # =====================================================================
-# GLOBAL CUSTOM CSS – Glassmorphism + Animations
+# GLOBAL CUSTOM CSS – Unique Light Professional Theme
 # =====================================================================
 st.markdown("""
 <style>
-/* ---------- Glass Cards ---------- */
+/* ========== Overall Background & Font ========== */
+body {
+    background: linear-gradient(135deg, #e8f0fe 0%, #d9e8ff 100%);
+}
+.main {
+    background-color: transparent;
+}
+/* ========== Cards ========== */
 div[data-testid="stVerticalBlock"] > div {
-    background: rgba(30, 41, 59, 0.65);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 18px;
-    padding: 24px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 20px;
+    padding: 28px;
     margin-bottom: 20px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 24px rgba(0, 20, 50, 0.12);
 }
 
-/* ---------- Buttons ---------- */
+/* ========== Buttons ========== */
 .stButton > button {
     border-radius: 12px;
     background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
@@ -39,18 +46,18 @@ div[data-testid="stVerticalBlock"] > div {
     letter-spacing: 0.5px;
     transition: all 0.3s ease;
     padding: 10px 24px;
+    box-shadow: 0 4px 10px rgba(30, 58, 95, 0.3);
 }
 .stButton > button:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 24px rgba(0,0,0,0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(30, 58, 95, 0.4);
     background: linear-gradient(135deg, #2d5a87 0%, #1e3a5f 100%);
 }
 
-/* ---------- Sidebar ---------- */
+/* ========== Sidebar ========== */
 section[data-testid="stSidebar"] {
-    background-color: #0f172a;
-    border-right: 1px solid #1e293b;
-    transition: width 0.3s ease;
+    background: linear-gradient(180deg, #1e3a5f 0%, #0f2a4a 100%);
+    border-right: 1px solid #2d4b6e;
 }
 section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
     color: #e2e8f0;
@@ -58,44 +65,48 @@ section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
 section[data-testid="stSidebar"] .stSelectbox label {
     color: #e2e8f0 !important;
 }
-
-/* ---------- Input Fields ---------- */
-.stTextInput input, .stNumberInput input, .stSelectbox select {
-    background-color: #1e293b !important;
-    border: 1px solid #334155 !important;
-    border-radius: 10px !important;
-    color: white !important;
+/* Make sidebar text white */
+section[data-testid="stSidebar"] .css-1d391kg, section[data-testid="stSidebar"] .stMarkdown {
+    color: #e2e8f0;
 }
 
-/* ---------- Tables ---------- */
+/* ========== Input Fields ========== */
+.stTextInput input, .stNumberInput input, .stSelectbox select {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 10px !important;
+    color: #1e293b !important;
+}
+
+/* ========== Tables ========== */
 .stTable tbody tr:nth-child(even) {
-    background-color: rgba(30, 41, 59, 0.5);
+    background-color: #f1f5f9;
 }
 .stTable tbody tr:hover, [data-testid="stTable"] tbody tr:hover {
-    background-color: rgba(30, 64, 95, 0.3) !important;
+    background-color: #e2e8f0 !important;
     transition: background-color 0.2s ease;
 }
 
-/* ---------- Metric Cards ---------- */
+/* ========== Metric Cards ========== */
 [data-testid="metric-container"] {
-    background: linear-gradient(145deg, #1e293b, #0f172a);
+    background: linear-gradient(145deg, #ffffff, #f8fafc);
     border-radius: 20px;
-    border: 1px solid #334155;
-    padding: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    border: 1px solid #e2e8f0;
+    padding: 24px;
+    box-shadow: 0 4px 12px rgba(0, 20, 50, 0.08);
 }
 [data-testid="metric-container"] label {
-    color: #94a3b8 !important;
-    font-size: 13px;
+    color: #475569 !important;
+    font-size: 14px;
     font-weight: 500;
 }
 [data-testid="metric-container"] div[data-testid="stMetricValue"] {
-    font-size: 34px !important;
+    font-size: 36px !important;
     font-weight: 800;
-    color: #fbbf24 !important;
+    color: #1e3a5f !important;
 }
 
-/* ---------- Fade-in Animation ---------- */
+/* ========== Fade-in Animation ========== */
 .main > div:first-child {
     animation: fadeIn 0.6s ease;
 }
@@ -107,30 +118,31 @@ section[data-testid="stSidebar"] .stSelectbox label {
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# 2. ROLE-BASED LOGIN (Centered Glass Card)
+# 2. ROLE-BASED LOGIN (Light Themed Card)
 # -----------------------------
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
     st.session_state["role"] = None
 
 if not st.session_state["authenticated"]:
-    # Centered glass card for login
+    # Light centered card for login
     st.markdown("""
     <style>
     .login-card {
-        background: rgba(30, 41, 59, 0.7);
-        backdrop-filter: blur(15px);
-        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(0, 0, 0, 0.05);
         border-radius: 24px;
         padding: 40px;
         max-width: 400px;
         margin: 80px auto;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        box-shadow: 0 20px 40px rgba(0, 20, 50, 0.15);
         text-align: center;
     }
     .login-card h2 {
-        color: #fbbf24;
+        color: #1e3a5f;
         margin-bottom: 30px;
+        font-weight: 700;
     }
     </style>
     <div class="login-card">
@@ -369,8 +381,8 @@ with col2:
         st.image("School_logo.png", width=180)
     except:
         st.caption("School Logo not found")
-st.markdown("<h1 style='text-align: center; color: #fbbf24;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center; color: #94a3b8;'>Administrative Management System</h4>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #1e3a5f;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center; color: #475569;'>Administrative Management System</h4>", unsafe_allow_html=True)
 st.divider()
 
 # =============================
