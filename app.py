@@ -13,33 +13,34 @@ from streamlit_option_menu import option_menu
 st.set_page_config(page_title="RMM Administrative Portal", page_icon="🏫", layout="wide")
 
 # =====================================================================
-# BLUE PROFESSIONAL CSS – Simple, Clean, No Glass
+# DARK NAVY BLUE THEME – No White, All Sidebar
 # =====================================================================
 st.markdown("""
 <style>
-/* ========== Overall ========== */
+/* ========== Global Background ========== */
 body {
-    background-color: #f0f4fc;
+    background-color: #0a1628;
+    color: #e0e7f2;
 }
 .main {
     background-color: transparent;
 }
 /* ========== Sidebar ========== */
 section[data-testid="stSidebar"] {
-    background-color: #1a2b4c;
-    border-right: 1px solid #2d4373;
+    background-color: #0f1f3a;
+    border-right: 2px solid #1e3d6e;
 }
 section[data-testid="stSidebar"] * {
-    color: #e0e7f2 !important;
+    color: #cbd5e1 !important;
 }
-/* ========== Cards (simple white containers) ========== */
+/* ========== Cards (dark navy) ========== */
 div[data-testid="stVerticalBlock"] > div {
-    background: #ffffff;
-    border-radius: 8px;
-    border: 1px solid #dce3f0;
+    background: #112240;
+    border-radius: 10px;
+    border: 1px solid #1e3d6e;
     padding: 20px;
     margin-bottom: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 /* ========== Buttons ========== */
 .stButton > button {
@@ -49,63 +50,71 @@ div[data-testid="stVerticalBlock"] > div {
     border-radius: 6px;
     padding: 8px 20px;
     font-weight: 600;
-    transition: all 0.15s;
+    transition: all 0.2s;
 }
 .stButton > button:hover {
     background-color: #2c5282;
+    box-shadow: 0 0 8px rgba(44,82,130,0.4);
 }
 /* ========== Inputs ========== */
 .stTextInput input, .stNumberInput input, .stSelectbox select {
+    background-color: #1a2744 !important;
+    border: 1px solid #2d4373;
     border-radius: 6px;
-    border: 1px solid #cdd5e0;
+    color: #e2e8f0 !important;
     padding: 8px 12px;
 }
 /* ========== Tables ========== */
+.stTable tbody tr:nth-child(odd) {
+    background-color: #1a2744;
+}
+.stTable tbody tr:nth-child(even) {
+    background-color: #0f1f3a;
+}
 .stTable tbody tr:hover {
-    background-color: #f1f5fb;
+    background-color: #243b5e;
 }
 /* ========== Metric Cards ========== */
 [data-testid="metric-container"] {
-    background: white;
-    border: 1px solid #dce3f0;
+    background: #112240;
+    border: 1px solid #1e3d6e;
     border-radius: 10px;
     padding: 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }
 [data-testid="metric-container"] label {
-    color: #4a5b7c;
+    color: #94a3b8;
     font-size: 13px;
 }
 [data-testid="metric-container"] div[data-testid="stMetricValue"] {
-    color: #1a2b4c;
+    color: #f0c45a;
     font-weight: 700;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# 2. ROLE-BASED LOGIN (Centered Glass Card – keeping it clean but simple)
+# 2. ROLE-BASED LOGIN (Navy Blue Centered)
 # -----------------------------
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
     st.session_state["role"] = None
 
 if not st.session_state["authenticated"]:
-    # Simple centered card
     st.markdown("""
     <style>
     .login-card {
-        background: white;
-        border: 1px solid #dce3f0;
+        background: #112240;
+        border: 1px solid #1e3d6e;
         border-radius: 12px;
         padding: 40px;
         max-width: 400px;
         margin: 80px auto;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.4);
         text-align: center;
     }
     .login-card h2 {
-        color: #1a2b4c;
+        color: #f0c45a;
         margin-bottom: 24px;
     }
     </style>
@@ -160,7 +169,7 @@ if wb is None:
     st.stop()
 
 # -----------------------------
-# 4. CACHING FUNCTIONS (10 min TTL)
+# 4. CACHING FUNCTIONS (same)
 # -----------------------------
 @st.cache_data(ttl=600)
 def get_sheet_names():
@@ -227,98 +236,44 @@ def load_fee_structure():
     return fee_map
 
 # -----------------------------
-# 5. SIDEBAR CONSTRUCTION (Role‑Based with Icons)
+# 5. SIDEBAR (All navigation here, no main screen clutter)
 # -----------------------------
-st.sidebar.header("Administration Panel")
-st.sidebar.markdown(f"**Logged in as:** {st.session_state['role']}")
+st.sidebar.header("Administration")
+st.sidebar.markdown(f"**{st.session_state['role']}**")
+selected_class = st.sidebar.selectbox("Class", ["7","8","9","10","11","12"])
 
-selected_class = st.sidebar.selectbox("Academic Class", ["7", "8", "9", "10", "11", "12"])
-
-# Define menu based on role
 role = st.session_state["role"]
-if role == "Teacher":
-    menu_options = [
-        "Student Attendance",
-        "Attendance Report",
-        "Student Records",
-        "Edit Student Details",
-        "Add New Student",
-        "At-Risk Students"
-    ]
-elif role == "Clerk":
-    menu_options = [
-        "Fee Collection",
-        "Daily Cash Report",
-        "Defaulter List",
-        "Add New Student",
-        "Student Records"
-    ]
-elif role == "Principal":
-    menu_options = [
-        "Executive Dashboard",
-        "Student Attendance",
-        "Attendance Report",
-        "Fee Collection",
-        "Daily Cash Report",
-        "Defaulter List",
-        "Student Records",
-        "Edit Student Details",
-        "Add New Student",
-        "At-Risk Students"
-    ]
-else:
-    st.error("Invalid role")
-    st.stop()
+menu_options = {
+    "Teacher": ["Student Attendance","Attendance Report","Student Records","Edit Student Details","Add New Student","At-Risk Students"],
+    "Clerk": ["Fee Collection","Daily Cash Report","Defaulter List","Add New Student","Student Records"],
+    "Principal": ["Executive Dashboard","Student Attendance","Attendance Report","Fee Collection","Daily Cash Report","Defaulter List","Student Records","Edit Student Details","Add New Student","At-Risk Students"]
+}[role]
 
-# Icons mapping
 icons = {
-    "Executive Dashboard": "speedometer2",
-    "Student Attendance": "calendar-check",
-    "Attendance Report": "bar-chart-line",
-    "Fee Collection": "cash-stack",
-    "Daily Cash Report": "graph-up-arrow",
-    "Defaulter List": "exclamation-triangle",
-    "Student Records": "people",
-    "Edit Student Details": "pencil-square",
-    "Add New Student": "person-plus",
+    "Executive Dashboard": "speedometer2","Student Attendance": "calendar-check","Attendance Report": "bar-chart-line",
+    "Fee Collection": "cash-stack","Daily Cash Report": "graph-up-arrow","Defaulter List": "exclamation-triangle",
+    "Student Records": "people","Edit Student Details": "pencil-square","Add New Student": "person-plus",
     "At-Risk Students": "exclamation-circle"
 }
-menu_icons = [icons.get(opt, "circle") for opt in menu_options]
-
-menu = option_menu(
-    menu_title=None,
-    options=menu_options,
-    icons=menu_icons,
-    menu_icon="cast",
-    default_index=0,
-    orientation="vertical",
+menu = option_menu(None, menu_options, [icons.get(o,"circle") for o in menu_options],
+    menu_icon="cast", default_index=0,
     styles={
-        "container": {"padding": "0!important", "background-color": "#0f172a"},
-        "icon": {"color": "#fbbf24", "font-size": "16px"},
-        "nav-link": {
-            "font-size": "14px",
-            "text-align": "left",
-            "margin": "0px",
-            "--hover-color": "#1e293b",
-            "color": "#e2e8f0"
-        },
-        "nav-link-selected": {"background-color": "#1e3a5f", "color": "white"},
+        "container": {"background-color": "#0f1f3a", "padding": "0!important"},
+        "icon": {"color": "#f0c45a", "font-size": "16px"},
+        "nav-link": {"--hover-color": "#1e2746"},
+        "nav-link-selected": {"background-color": "#1e3d6e"},
     }
 )
 
 if st.sidebar.button("Logout"):
-    st.session_state["authenticated"] = False
-    st.session_state["role"] = None
-    st.cache_data.clear()
+    st.session_state.clear()
     st.rerun()
-
-# Refresh data button
 if st.sidebar.button("Refresh Data"):
     st.cache_data.clear()
     st.rerun()
 
 # -----------------------------
-# 6. LOAD CLASS DATA
+# 6. LOAD DATA
 # -----------------------------
 df_master, student_list = load_master_data(selected_class)
 id_col = next((c for c in df_master.columns if c.lower() == 'student id'), None) if not df_master.empty else None
@@ -333,21 +288,20 @@ master_sheet = find_class_sheet(selected_class, 'Master')
 attendance_sheet = find_class_sheet(selected_class, 'Attendance')
 fees_sheet = find_class_sheet(selected_class, 'Fees')
 if not all([master_sheet, attendance_sheet, fees_sheet]):
-    st.error("Required class sheets missing. Please check tab names.")
+    st.error("Sheets missing.")
     st.stop()
 
 # -----------------------------
-# 7. BRANDING
+# 7. BRANDING (Just School Name, No Clutter)
 # -----------------------------
-st.markdown("<h1 style='text-align: center; color: #1a2b4c;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #5a6b8c;'>Administrative Management System</p>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #f0c45a;'>RAM MURTI MISHRA INTER COLLEGE</h2>", unsafe_allow_html=True)
 st.divider()
 
 # =============================
 # 8. EXECUTIVE DASHBOARD (Principal)
 # =============================
 if menu == "Executive Dashboard" and role == "Principal":
-    st.subheader(f"Executive Dashboard – Class {selected_class}")
+    st.subheader(f"Dashboard – Class {selected_class}")
     with st.spinner("Loading executive insights..."):
         if df_master.empty:
             st.warning("No student data.")
