@@ -3,9 +3,8 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
 import pandas as pd
-import traceback
 import io
-from streamlit_option_menu import option_menu
+import base64
 
 # -----------------------------
 # 1. CONFIGURATION
@@ -13,148 +12,37 @@ from streamlit_option_menu import option_menu
 st.set_page_config(page_title="RMM Administrative Portal", page_icon="🏫", layout="wide")
 
 # =====================================================================
-# GLOBAL CUSTOM CSS – Glassmorphism + Animations
+# NO CUSTOM CSS – USING STREAMLIT'S DEFAULT LIGHT THEME
 # =====================================================================
-st.markdown("""
-<style>
-/* ---------- Glass Cards ---------- */
-div[data-testid="stVerticalBlock"] > div {
-    background: rgba(30, 41, 59, 0.65);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 18px;
-    padding: 24px;
-    margin-bottom: 20px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-}
-
-/* ---------- Buttons ---------- */
-.stButton > button {
-    border-radius: 12px;
-    background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
-    border: none;
-    color: white;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    transition: all 0.3s ease;
-    padding: 10px 24px;
-}
-.stButton > button:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 24px rgba(0,0,0,0.4);
-    background: linear-gradient(135deg, #2d5a87 0%, #1e3a5f 100%);
-}
-
-/* ---------- Sidebar ---------- */
-section[data-testid="stSidebar"] {
-    background-color: #0f172a;
-    border-right: 1px solid #1e293b;
-    transition: width 0.3s ease;
-}
-section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
-    color: #e2e8f0;
-}
-section[data-testid="stSidebar"] .stSelectbox label {
-    color: #e2e8f0 !important;
-}
-
-/* ---------- Input Fields ---------- */
-.stTextInput input, .stNumberInput input, .stSelectbox select {
-    background-color: #1e293b !important;
-    border: 1px solid #334155 !important;
-    border-radius: 10px !important;
-    color: white !important;
-}
-
-/* ---------- Tables ---------- */
-.stTable tbody tr:nth-child(even) {
-    background-color: rgba(30, 41, 59, 0.5);
-}
-.stTable tbody tr:hover, [data-testid="stTable"] tbody tr:hover {
-    background-color: rgba(30, 64, 95, 0.3) !important;
-    transition: background-color 0.2s ease;
-}
-
-/* ---------- Metric Cards ---------- */
-[data-testid="metric-container"] {
-    background: linear-gradient(145deg, #1e293b, #0f172a);
-    border-radius: 20px;
-    border: 1px solid #334155;
-    padding: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-}
-[data-testid="metric-container"] label {
-    color: #94a3b8 !important;
-    font-size: 13px;
-    font-weight: 500;
-}
-[data-testid="metric-container"] div[data-testid="stMetricValue"] {
-    font-size: 34px !important;
-    font-weight: 800;
-    color: #fbbf24 !important;
-}
-
-/* ---------- Fade-in Animation ---------- */
-.main > div:first-child {
-    animation: fadeIn 0.6s ease;
-}
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-</style>
-""", unsafe_allow_html=True)
 
 # -----------------------------
-# 2. ROLE-BASED LOGIN (Centered Glass Card)
+# 2. ROLE-BASED LOGIN (Simple centered form)
 # -----------------------------
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
     st.session_state["role"] = None
 
 if not st.session_state["authenticated"]:
-    # Centered glass card for login
-    st.markdown("""
-    <style>
-    .login-card {
-        background: rgba(30, 41, 59, 0.7);
-        backdrop-filter: blur(15px);
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 24px;
-        padding: 40px;
-        max-width: 400px;
-        margin: 80px auto;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-        text-align: center;
-    }
-    .login-card h2 {
-        color: #fbbf24;
-        margin-bottom: 30px;
-    }
-    </style>
-    <div class="login-card">
-    """, unsafe_allow_html=True)
-
-    st.markdown("<h2>School Portal Login</h2>", unsafe_allow_html=True)
-    role = st.selectbox("Select Role", ["Teacher", "Clerk", "Principal"])
-    pwd = st.text_input("Password", type="password")
-    if st.button("Login"):
-        valid = False
-        if role == "Teacher" and pwd == "TCH2024":
-            valid = True
-        elif role == "Clerk" and pwd == "CLK2024":
-            valid = True
-        elif role == "Principal" and pwd == "PRN2024":
-            valid = True
-        if valid:
-            st.session_state["authenticated"] = True
-            st.session_state["role"] = role
-            st.rerun()
-        else:
-            st.error("Invalid Role or Password")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    _, center, _ = st.columns([1, 2, 1])
+    with center:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("## School Portal Login")
+        role = st.selectbox("Select Role", ["Teacher", "Clerk", "Principal"])
+        pwd = st.text_input("Password", type="password")
+        if st.button("Login"):
+            valid = False
+            if role == "Teacher" and pwd == "TCH2024":
+                valid = True
+            elif role == "Clerk" and pwd == "CLK2024":
+                valid = True
+            elif role == "Principal" and pwd == "PRN2024":
+                valid = True
+            if valid:
+                st.session_state["authenticated"] = True
+                st.session_state["role"] = role
+                st.rerun()
+            else:
+                st.error("Invalid Role or Password")
     st.stop()
 
 # -----------------------------
@@ -251,7 +139,7 @@ def load_fee_structure():
     return fee_map
 
 # -----------------------------
-# 5. SIDEBAR – ALL NAVIGATION HERE (No options on main screen)
+# 5. SIDEBAR (using st.radio – stable)
 # -----------------------------
 with st.sidebar:
     st.header("Administration Panel")
@@ -259,7 +147,6 @@ with st.sidebar:
 
     selected_class = st.selectbox("Academic Class", ["7", "8", "9", "10", "11", "12"])
 
-    # Define menu based on role
     role = st.session_state["role"]
     if role == "Teacher":
         menu_options = [
@@ -295,41 +182,7 @@ with st.sidebar:
         st.error("Invalid role")
         st.stop()
 
-    # Icons mapping
-    icons = {
-        "Executive Dashboard": "speedometer2",
-        "Student Attendance": "calendar-check",
-        "Attendance Report": "bar-chart-line",
-        "Fee Collection": "cash-stack",
-        "Daily Cash Report": "graph-up-arrow",
-        "Defaulter List": "exclamation-triangle",
-        "Student Records": "people",
-        "Edit Student Details": "pencil-square",
-        "Add New Student": "person-plus",
-        "At-Risk Students": "exclamation-circle"
-    }
-    menu_icons = [icons.get(opt, "circle") for opt in menu_options]
-
-    menu = option_menu(
-        menu_title=None,
-        options=menu_options,
-        icons=menu_icons,
-        menu_icon="cast",
-        default_index=0,
-        orientation="vertical",
-        styles={
-            "container": {"padding": "0!important", "background-color": "#0f172a"},
-            "icon": {"color": "#fbbf24", "font-size": "16px"},
-            "nav-link": {
-                "font-size": "14px",
-                "text-align": "left",
-                "margin": "0px",
-                "--hover-color": "#1e293b",
-                "color": "#e2e8f0"
-            },
-            "nav-link-selected": {"background-color": "#1e3a5f", "color": "white"},
-        }
-    )
+    menu = st.radio("Navigation", menu_options, label_visibility="collapsed")
 
     if st.button("Logout"):
         st.session_state["authenticated"] = False
@@ -337,7 +190,6 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-    # Refresh data button
     if st.button("Refresh Data"):
         st.cache_data.clear()
         st.rerun()
@@ -364,14 +216,8 @@ if not all([master_sheet, attendance_sheet, fees_sheet]):
 # -----------------------------
 # 7. BRANDING
 # -----------------------------
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    try:
-        st.image("School_logo.png", width=180)
-    except:
-        st.caption("School Logo not found")
-st.markdown("<h1 style='text-align: center; color: #fbbf24;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center; color: #94a3b8;'>Administrative Management System</h4>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align: center;'>Administrative Management System</h4>", unsafe_allow_html=True)
 st.divider()
 
 # =============================
@@ -611,7 +457,7 @@ elif menu == "Attendance Report":
                 )
 
 # =============================
-# 11. FEE COLLECTION (Clerk, Principal)
+# 11. FEE COLLECTION (with Receipt Printing)
 # =============================
 elif menu == "Fee Collection":
     if role not in ["Clerk", "Principal"]:
@@ -634,13 +480,44 @@ elif menu == "Fee Collection":
                     amount = st.number_input("Amount Received", min_value=0)
                     month = st.selectbox("Month", ["April","May","June","July","August","September","October","November","December","January","February","March"])
                     mode = st.selectbox("Payment Mode", ["Cash", "Online", "Cheque"])
-                    if st.form_submit_button("Process Payment"):
-                        new_total = current_fees + amount
-                        master_sheet.update_cell(m_cell.row, 7, str(new_total))
-                        ts = datetime.now().strftime("%d-%m-%Y %H:%M")
-                        fees_sheet.insert_row([s_id, amount, month, f"{ts} {mode}"], index=2)
-                        st.success(f"Payment of INR {amount} recorded. New Total: INR {new_total}")
-                        st.cache_data.clear()
+                    submitted = st.form_submit_button("Process Payment")
+
+                    if submitted:
+                        if amount <= 0:
+                            st.error("Amount must be > 0")
+                        else:
+                            new_total = current_fees + amount
+                            master_sheet.update_cell(m_cell.row, 7, str(new_total))
+                            ts = datetime.now().strftime("%d-%m-%Y %H:%M")
+                            fees_sheet.insert_row([s_id, amount, month, f"{ts} {mode}"], index=2)
+                            st.success(f"Payment of INR {amount} recorded. New Total: INR {new_total}")
+                            st.cache_data.clear()
+
+                            # ---- RECEIPT SECTION ----
+                            receipt_html = f"""
+                            <div style="border:1px solid #ccc; padding:15px; margin-top:20px; border-radius:8px;">
+                                <h3 style="text-align:center;">PAYMENT RECEIPT</h3>
+                                <p><b>Receipt No:</b> RCP-{int(datetime.timestamp(datetime.now()))}</p>
+                                <p><b>Date:</b> {datetime.now().strftime("%d-%m-%Y %H:%M")}</p>
+                                <p><b>Student ID:</b> {s_id}</p>
+                                <p><b>Student Name:</b> {m_row[1]}</p>
+                                <p><b>Amount Paid:</b> INR {amount}</p>
+                                <p><b>Payment Mode:</b> {mode}</p>
+                                <p><b>Month:</b> {month}</p>
+                            </div>
+                            """
+                            st.markdown(receipt_html, unsafe_allow_html=True)
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown("""
+                                    <button onclick="window.print()" style="background:#1a3b5d; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">
+                                        Print Receipt
+                                    </button>
+                                """, unsafe_allow_html=True)
+                            with col2:
+                                b64 = base64.b64encode(receipt_html.encode()).decode()
+                                href = f'<a href="data:text/html;base64,{b64}" download="Receipt_{s_id}_{datetime.now().strftime("%Y%m%d%H%M")}.html">Download Receipt</a>'
+                                st.markdown(href, unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -762,7 +639,7 @@ elif menu == "Student Records":
                     fee_headers = fees_data[0]
                     history = [r for r in fees_data[1:] if r[0].upper() == s_id.upper()]
                     if history:
-                        st.table([fee_headers] + history)
+                        st.dataframe(pd.DataFrame(history, columns=fee_headers), use_container_width=True)
                         df_hist = pd.DataFrame(history, columns=fee_headers)
                         buf = io.BytesIO()
                         with pd.ExcelWriter(buf, engine='xlsxwriter') as w:
