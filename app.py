@@ -4,7 +4,6 @@ from gspread.utils import rowcol_to_a1
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
 import pandas as pd
-import traceback
 import io
 import json
 import base64
@@ -15,71 +14,93 @@ import base64
 st.set_page_config(page_title="Cambridge Portal", page_icon="🏫", layout="wide")
 
 # =====================================================================
-# NAVY BLUE GLASSMORPHISM THEME (Optimised – no heavy animations)
+# CLEAN DARK THEME – BLACK BACKGROUND, NO GLASS
 # =====================================================================
 st.markdown("""
 <style>
-/* ---------- Glass Cards ---------- */
+/* Global */
+body {
+    background-color: #000000;
+    color: #ffffff;
+}
+.main {
+    background-color: #000000;
+}
+
+/* Cards */
 div[data-testid="stVerticalBlock"] > div {
-    background: rgba(30, 41, 59, 0.65);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
+    background: #111111;
+    border: 1px solid #333333;
+    border-radius: 8px;
     padding: 20px;
     margin-bottom: 16px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
 }
 
-/* ---------- Buttons ---------- */
+/* Buttons */
 .stButton > button {
-    border-radius: 10px;
-    background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
-    border: none;
+    background-color: #1a3b5d;
     color: white;
-    font-weight: 600;
+    border: none;
+    border-radius: 6px;
     padding: 8px 20px;
+    font-weight: 600;
 }
 .stButton > button:hover {
-    background: linear-gradient(135deg, #2d5a87 0%, #1e3a5f 100%);
+    background-color: #2c5282;
 }
 
-/* ---------- Sidebar ---------- */
+/* Sidebar */
 section[data-testid="stSidebar"] {
-    background-color: #0f172a;
-    border-right: 1px solid #1e293b;
+    background-color: #0a0a0a;
+    border-right: 1px solid #333333;
+}
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+    color: #ffffff;
+}
+section[data-testid="stSidebar"] .stSelectbox label {
+    color: #ffffff !important;
 }
 
-/* ---------- Input Fields ---------- */
+/* Inputs */
 .stTextInput input, .stNumberInput input, .stSelectbox select {
-    background-color: #1e293b !important;
-    border: 1px solid #334155 !important;
-    border-radius: 8px !important;
+    background-color: #1a1a1a !important;
+    border: 1px solid #444444 !important;
+    border-radius: 6px !important;
     color: white !important;
 }
 
-/* ---------- Metric Cards ---------- */
+/* Tables */
+.stTable tbody tr:nth-child(even) {
+    background-color: #1a1a1a;
+}
+.stTable tbody tr:hover {
+    background-color: #2a2a2a;
+}
+
+/* Metric Cards */
 [data-testid="metric-container"] {
-    background: linear-gradient(145deg, #1e293b, #0f172a);
-    border-radius: 14px;
-    border: 1px solid #334155;
+    background: #111111;
+    border: 1px solid #333333;
+    border-radius: 8px;
     padding: 16px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+[data-testid="metric-container"] label {
+    color: #aaaaaa !important;
 }
 [data-testid="metric-container"] div[data-testid="stMetricValue"] {
     color: #fbbf24 !important;
 }
 
-/* ---------- Receipt Card ---------- */
+/* Receipt Card */
 .receipt-card {
-    background: #1e2a3a;
-    border: 1px dashed #f0c45a;
-    border-radius: 12px;
+    background: #111111;
+    border: 1px solid #444444;
+    border-radius: 8px;
     padding: 20px;
     margin: 20px 0;
 }
-.receipt-card h3 { color: #f0c45a; text-align: center; }
-.receipt-card p { color: #e0e7f2; }
+.receipt-card h3 { color: #fbbf24; text-align: center; }
+.receipt-card p { color: #e0e0e0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -91,43 +112,24 @@ if "authenticated" not in st.session_state:
     st.session_state["role"] = None
 
 if not st.session_state["authenticated"]:
-    st.markdown("""
-    <style>
-    .login-card {
-        background: rgba(30, 41, 59, 0.7);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 20px;
-        padding: 40px;
-        max-width: 400px;
-        margin: 80px auto;
-        box-shadow: 0 16px 40px rgba(0,0,0,0.4);
-        text-align: center;
-    }
-    .login-card h2 { color: #fbbf24; margin-bottom: 30px; }
-    </style>
-    <div class="login-card">
-    """, unsafe_allow_html=True)
-
-    try:
-        st.image("School_logo.png", width=180)
-    except:
-        pass
-    st.markdown("<h2>Cambridge International School</h2>", unsafe_allow_html=True)
-    role = st.selectbox("Select Role", ["Teacher", "Clerk", "Principal"])
-    pwd = st.text_input("Password", type="password")
-    if st.button("Login"):
-        valid = False
-        if role == "Teacher" and pwd == "TCH2024": valid = True
-        elif role == "Clerk" and pwd == "CLK2024": valid = True
-        elif role == "Principal" and pwd == "PRN2024": valid = True
-        if valid:
-            st.session_state["authenticated"] = True
-            st.session_state["role"] = role
-            st.rerun()
-        else:
-            st.error("Invalid credentials")
-    st.markdown("</div>", unsafe_allow_html=True)
+    # Simple centered login form
+    _, center, _ = st.columns([1,2,1])
+    with center:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("## Cambridge International School")
+        role = st.selectbox("Select Role", ["Teacher", "Clerk", "Principal"])
+        pwd = st.text_input("Password", type="password")
+        if st.button("Login"):
+            valid = False
+            if role == "Teacher" and pwd == "TCH2024": valid = True
+            elif role == "Clerk" and pwd == "CLK2024": valid = True
+            elif role == "Principal" and pwd == "PRN2024": valid = True
+            if valid:
+                st.session_state["authenticated"] = True
+                st.session_state["role"] = role
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
     st.stop()
 
 # -----------------------------
@@ -157,9 +159,9 @@ wb = get_workbook()
 if wb is None: st.stop()
 
 # -----------------------------
-# 4. CACHING FUNCTIONS (TTL = 1 hour)
+# 4. CACHING FUNCTIONS (TTL 1800)
 # -----------------------------
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800)
 def get_sheet_names():
     return [ws.title.strip() for ws in wb.worksheets()]
 
@@ -181,20 +183,32 @@ def get_available_classes():
             if class_name: classes.append(class_name)
     return sorted(classes) if classes else ["LKG"]
 
-@st.cache_data(ttl=3600)
-def load_all_class_data(class_name):
-    master_sheet = find_sheet(f"MASTER_{class_name}")
-    attendance_sheet = find_sheet(f"ATTENDANCE_{class_name}")
-    fees_sheet = find_sheet(f"FEES_{class_name}")
-    fee_struct = find_sheet("FEES_STRUCTURE")
+@st.cache_data(ttl=1800)
+def load_master_data(class_name):
+    sheet = find_sheet(f"MASTER_{class_name}")
+    if not sheet: return pd.DataFrame(), []
+    raw = sheet.get_all_values()
+    if len(raw) < 2: return pd.DataFrame(), []
+    headers = [h.strip() for h in raw[0]]
+    df = pd.DataFrame(raw[1:], columns=headers)
+    id_col = next((c for c in df.columns if c.upper() in ['ID', 'STUDENT ID']), None)
+    name_col = next((c for c in df.columns if c.upper() in ['NAME', 'STUDENT NAME']), None)
+    student_list = []
+    if id_col and name_col:
+        student_list = [f"{row[id_col]} - {row[name_col]}" for _, row in df.iterrows()]
+    return df, student_list
 
-    master_data = master_sheet.get_all_values() if master_sheet else []
-    attendance_data = attendance_sheet.get_all_values() if attendance_sheet else []
-    fees_data = fees_sheet.get_all_values() if fees_sheet else []
-    fee_struct_data = fee_struct.get_all_values() if fee_struct else []
-    return master_data, attendance_data, fees_data, fee_struct_data
+@st.cache_data(ttl=1800)
+def load_attendance_data(class_name):
+    sheet = find_sheet(f"ATTENDANCE_{class_name}")
+    return sheet.get_all_values() if sheet else []
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800)
+def load_fees_data(class_name):
+    sheet = find_sheet(f"FEES_{class_name}")
+    return sheet.get_all_values() if sheet else []
+
+@st.cache_data(ttl=1800)
 def load_fee_structure():
     sheet = find_sheet("FEES_STRUCTURE")
     if not sheet: return {}
@@ -236,30 +250,15 @@ with st.sidebar:
 # -----------------------------
 # 6. LOAD DATA
 # -----------------------------
-master_raw, att_raw, fees_raw, fee_struct_raw = load_all_class_data(selected_class)
+df_master, student_list = load_master_data(selected_class)
+id_col = next((c for c in df_master.columns if c.upper() in ['ID','STUDENT ID']), None) if not df_master.empty else None
+name_col = next((c for c in df_master.columns if c.upper() in ['NAME','STUDENT NAME']), None) if not df_master.empty else None
 
-# Parse Master
-df_master = pd.DataFrame()
-student_list = []
-if len(master_raw) > 1:
-    headers = [h.strip() for h in master_raw[0]]
-    df_master = pd.DataFrame(master_raw[1:], columns=headers)
-    id_col = next((c for c in df_master.columns if c.upper() in ['ID', 'STUDENT ID']), None)
-    name_col = next((c for c in df_master.columns if c.upper() in ['NAME', 'STUDENT NAME']), None)
-    if id_col and name_col:
-        student_list = [f"{row[id_col]} - {row[name_col]}" for _, row in df_master.iterrows()]
-
-# Parse Attendance
-attendance_data = att_raw
-
-# Parse Fees
-fees_data = fees_raw
-
-# Fee structure
+attendance_data = load_attendance_data(selected_class)
+fees_data = load_fees_data(selected_class)
 monthly_fee_map = load_fee_structure()
 default_fee = monthly_fee_map.get(selected_class, 500)
 
-# Sheet objects for updates
 master_sheet = find_sheet(f"MASTER_{selected_class}")
 attendance_sheet = find_sheet(f"ATTENDANCE_{selected_class}")
 fees_sheet = find_sheet(f"FEES_{selected_class}")
@@ -267,12 +266,12 @@ if not all([master_sheet, attendance_sheet, fees_sheet]):
     st.error("Required sheets missing.")
     st.stop()
 
-# Ensure columns exist
 def ensure_column(sheet, col_name):
     headers = sheet.row_values(1)
     if col_name not in headers:
         sheet.update_cell(1, len(headers)+1, col_name)
         st.cache_data.clear()
+
 ensure_column(master_sheet, "ANNUAL_FEE")
 ensure_column(master_sheet, "ADMISSION_FEE")
 
@@ -287,10 +286,6 @@ def compute_paid_total(sid, all_fees):
 # -----------------------------
 # 7. BRANDING
 # -----------------------------
-try:
-    st.image("School_logo.png", width=180)
-except:
-    pass
 st.markdown("<h2 style='text-align:center; color:#fbbf24;'>CAMBRIDGE INTERNATIONAL SCHOOL</h2>", unsafe_allow_html=True)
 st.divider()
 
@@ -305,10 +300,10 @@ if menu == "Executive Dashboard" and role == "Principal":
         total_students = len(df_master)
         today_str = datetime.now().strftime("%d-%m-%Y")
         att_headers = attendance_data[0] if attendance_data else []
-        today_col_1b = att_headers.index(today_str)+1 if today_str in att_headers else None
+        today_col_1based = att_headers.index(today_str)+1 if today_str in att_headers else None
         present = 0
-        if today_col_1b and len(attendance_data)>1:
-            today_idx = today_col_1b - 1
+        if today_col_1based and len(attendance_data)>1:
+            today_idx = today_col_1based - 1
             for row in attendance_data[1:]:
                 if today_idx < len(row) and row[today_idx].strip().upper() == 'P':
                     present += 1
@@ -343,7 +338,6 @@ if menu == "Executive Dashboard" and role == "Principal":
         col3.metric("Today Fees", f"₹{today_fees}")
         col4.metric("Month Fees", f"₹{month_col} ({col_pct:.0f}%)")
 
-        # Top 5 Outstanding
         if not df_master.empty:
             outstanding_list = []
             for _, student in df_master.iterrows():
@@ -367,20 +361,13 @@ if menu == "Executive Dashboard" and role == "Principal":
         else: st.write("None")
 
 # =============================
-# 9. STUDENT ATTENDANCE (Search + Batch Update)
+# 9. STUDENT ATTENDANCE (BATCH UPDATES)
 # =============================
 elif menu == "Student Attendance":
     st.subheader(f"Daily Attendance – {selected_class}")
     if not student_list: st.warning("No students.")
     else:
-        search_term = st.text_input("Search Student by Name or ID", "")
-        if search_term:
-            filtered = [s for s in student_list if search_term.lower() in s.lower()]
-        else:
-            filtered = student_list
-
-        sel = st.selectbox("Select Student", ["-- Select --"] + filtered)
-
+        sel = st.selectbox("Select Student", ["-- Select --"] + student_list)
         c1, c2, c3 = st.columns(3)
         with c1:
             if st.button("Mark Present"):
@@ -510,4 +497,257 @@ elif menu == "Attendance Report":
 # =============================
 elif menu == "Fee Collection":
     if role not in ["Clerk","Principal"]:
-        st.
+        st.error("Access Denied"); st.stop()
+    st.subheader(f"Fee Counter – {selected_class}")
+    if not student_list: st.warning("No students.")
+    else:
+        sel = st.selectbox("Select Student", ["-- Select --"]+student_list)
+        if sel != "-- Select --":
+            sid = sel.split(" - ")[0]
+            mask = df_master[id_col].astype(str) == sid
+            student_name = ""
+            if mask.any():
+                student_name = df_master[mask].iloc[0].get(name_col, "")
+            paid_total = compute_paid_total(sid, fees_data)
+            st.info(f"**Student:** {student_name} | **Total Paid (all):** ₹{paid_total}")
+            with st.form("fee_form", clear_on_submit=True):
+                fee_type = st.selectbox("Fee Type", ["Monthly Fee", "Annual Fee", "Admission Fee"])
+                amt = st.number_input("Amount", min_value=0)
+                mo = st.selectbox("Month", ["April","May","June","July","August","September","October","November","December","January","February","March"])
+                mode = st.selectbox("Payment Mode", ["Cash", "Online", "Cheque"])
+                submitted = st.form_submit_button("Process Payment")
+                if submitted:
+                    if amt <= 0:
+                        st.error("Amount must be > 0")
+                    else:
+                        ts = datetime.now().strftime("%d-%m-%Y %H:%M")
+                        fh = fees_sheet.row_values(1)
+                        if "Fee Type" not in fh:
+                            fees_sheet.update_cell(1, len(fh)+1, "Fee Type")
+                            fh.append("Fee Type")
+                        fees_sheet.insert_row([sid, amt, mo, f"{ts} {mode}", fee_type], index=2)
+                        st.success(f"Payment of ₹{amt} recorded ({fee_type})")
+                        st.cache_data.clear()
+                        receipt_html = f"""
+<div style="border:1px solid #444; padding:15px; margin-top:20px; border-radius:8px; background:#111;">
+    <h3 style="text-align:center; color:#fbbf24;">PAYMENT RECEIPT</h3>
+    <p style="color:#e0e0e0;"><b>Receipt No:</b> RCP-{int(datetime.timestamp(datetime.now()))}</p>
+    <p style="color:#e0e0e0;"><b>Date:</b> {datetime.now().strftime("%d-%m-%Y %H:%M")}</p>
+    <p style="color:#e0e0e0;"><b>Student ID:</b> {sid}</p>
+    <p style="color:#e0e0e0;"><b>Student Name:</b> {student_name}</p>
+    <p style="color:#e0e0e0;"><b>Fee Type:</b> {fee_type}</p>
+    <p style="color:#e0e0e0;"><b>Amount Paid:</b> ₹{amt}</p>
+    <p style="color:#e0e0e0;"><b>Payment Mode:</b> {mode}</p>
+    <p style="color:#e0e0e0;"><b>Month:</b> {mo}</p>
+</div>
+"""
+                        st.markdown(receipt_html, unsafe_allow_html=True)
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("""
+                                <button onclick="window.print()" style="background:#1a3b5d; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer;">
+                                    Print Receipt
+                                </button>
+                            """, unsafe_allow_html=True)
+                        with col2:
+                            b64 = base64.b64encode(receipt_html.encode()).decode()
+                            href = f'<a href="data:text/html;base64,{b64}" download="Receipt_{sid}_{datetime.now().strftime("%Y%m%d%H%M")}.html">Download Receipt</a>'
+                            st.markdown(href, unsafe_allow_html=True)
+
+# =============================
+# 12. DAILY CASH REPORT
+# =============================
+elif menu == "Daily Cash Report":
+    if role not in ["Clerk","Principal"]:
+        st.error("Access Denied"); st.stop()
+    st.subheader(f"Today's Financial Summary – {selected_class}")
+    today_str = datetime.now().strftime("%d-%m-%Y")
+    if fees_data and len(fees_data)>1:
+        fh = fees_data[0]
+        today_rows = [r for r in fees_data[1:] if len(r)>=4 and r[3].split(' ')[0]==today_str]
+        if today_rows:
+            amt_col = fh.index('Amount') if 'Amount' in fh else 1
+            total = sum(int(r[amt_col]) for r in today_rows if r[amt_col].isdigit())
+            st.metric("Total Today", f"₹{total}")
+            display_cols = ['Student ID','Amount','Month','Date of payment']
+            if 'Fee Type' in fh: display_cols.append('Fee Type')
+            df_today = pd.DataFrame(today_rows, columns=fh)
+            available_cols = [c for c in display_cols if c in df_today.columns]
+            st.dataframe(df_today[available_cols])
+        else: st.info("No transactions today.")
+    else: st.info("No fee records.")
+
+# =============================
+# 13. STUDENT RECORDS
+# =============================
+elif menu == "Student Records":
+    st.subheader(f"Student Profile – {selected_class}")
+    if not student_list: st.warning("No students.")
+    else:
+        sel = st.selectbox("Select Student", ["-- Select --"]+student_list)
+        if sel != "-- Select --":
+            sid = sel.split(" - ")[0]
+            mask = df_master[id_col].astype(str)==sid
+            if mask.any():
+                sd = df_master[mask].iloc[0]
+                name = sd.get(name_col,'')
+                roll = sd.get('ROLL NO','')
+                father = sd.get('FATHER','') or sd.get('FATHER NAME','')
+                mobile = sd.get('MOBILE','')
+                addr = sd.get('ADDRESS','N/A')
+                ann = sd.get('ANNUAL_FEE','0')
+                adm = sd.get('ADMISSION_FEE','0')
+                paid = compute_paid_total(sid, fees_data)
+                st.info(f"**{name}** | Roll: {roll}")
+                c1,c2 = st.columns(2)
+                c1.write(f"Father: {father}")
+                c1.write(f"Mobile: {mobile}")
+                c1.write(f"Annual Fees Due: ₹{ann}")
+                c1.write(f"Admission Fees Due: ₹{adm}")
+                c2.write(f"Total Paid: ₹{paid}")
+                c2.write(f"Address: {addr}")
+                st.divider()
+                st.subheader("Fee History")
+                if fees_data and len(fees_data)>1:
+                    fh = fees_data[0]
+                    hist = [r for r in fees_data[1:] if r[0].upper()==sid.upper()]
+                    if hist:
+                        df_hist = pd.DataFrame(hist, columns=fh)
+                        st.dataframe(df_hist, use_container_width=True)
+                        buf = io.BytesIO()
+                        with pd.ExcelWriter(buf, engine='xlsxwriter') as w:
+                            df_hist.to_excel(w, index=False)
+                        st.download_button("Download History", buf.getvalue(), f"FeeHistory_{sid}.xlsx")
+                    else: st.write("No history.")
+                else: st.write("No records.")
+            else: st.warning("Not found.")
+
+# =============================
+# 14. EDIT STUDENT DETAILS
+# =============================
+elif menu == "Edit Student Details":
+    st.subheader(f"Edit Student – {selected_class}")
+    if not student_list: st.warning("No students.")
+    else:
+        sel = st.selectbox("Choose Student", ["-- Select --"]+student_list)
+        if sel != "-- Select --":
+            sid = sel.split(" - ")[0]
+            try:
+                cell = master_sheet.find(sid)
+                rn = cell.row
+                rd = master_sheet.row_values(rn)
+                hd = [h.strip() for h in master_sheet.row_values(1)]
+                def fc(n):
+                    for i,h in enumerate(hd):
+                        if h.upper() == n.upper(): return i
+                    return None
+                def gv(col): return rd[col] if col is not None and col < len(rd) else ""
+                cname = fc('NAME')
+                cfather = fc('FATHER') or fc('FATHER NAME')
+                cmobile = fc('MOBILE')
+                caddress = fc('ADDRESS')
+                caadhar = fc('AADHAR') or fc('AADHAAR')
+                cannual = fc('ANNUAL_FEE')
+                cadm = fc('ADMISSION_FEE')
+                if caddress is None:
+                    master_sheet.update_cell(1, len(hd)+1, 'ADDRESS')
+                    st.cache_data.clear()
+                    hd.append('ADDRESS')
+                    caddress = len(hd)-1
+                if cannual is None:
+                    master_sheet.update_cell(1, len(hd)+1, 'ANNUAL_FEE')
+                    st.cache_data.clear()
+                    hd.append('ANNUAL_FEE')
+                    cannual = len(hd)-1
+                if cadm is None:
+                    master_sheet.update_cell(1, len(hd)+1, 'ADMISSION_FEE')
+                    st.cache_data.clear()
+                    hd.append('ADMISSION_FEE')
+                    cadm = len(hd)-1
+
+                current_name = gv(cname)
+                current_father = gv(cfather)
+                current_mobile = gv(cmobile)
+                current_address = gv(caddress)
+                current_aadhaar = gv(caadhar) if caadhar else ""
+                current_annual = gv(cannual) if cannual else "0"
+                current_adm = gv(cadm) if cadm else "0"
+
+                st.info(f"**ID:** {sid}")
+                with st.form("edit_form"):
+                    nn = st.text_input("Name", value=current_name)
+                    nf = st.text_input("Father", value=current_father)
+                    nm = st.text_input("Mobile", value=current_mobile)
+                    na = st.text_input("Address", value=current_address)
+                    nd = st.text_input("Aadhaar", value=current_aadhaar)
+                    nannual = st.number_input("Annual Fees Due", value=int(current_annual) if current_annual.isdigit() else 0)
+                    nadm = st.number_input("Admission Fees Due", value=int(current_adm) if current_adm.isdigit() else 0)
+                    if st.form_submit_button("Update"):
+                        if cname: master_sheet.update_cell(rn, cname+1, nn)
+                        if cfather: master_sheet.update_cell(rn, cfather+1, nf)
+                        if cmobile: master_sheet.update_cell(rn, cmobile+1, nm)
+                        master_sheet.update_cell(rn, caddress+1, na)
+                        if caadhar: master_sheet.update_cell(rn, caadhar+1, nd)
+                        master_sheet.update_cell(rn, cannual+1, str(nannual))
+                        master_sheet.update_cell(rn, cadm+1, str(nadm))
+                        st.success("Updated!")
+                        st.cache_data.clear()
+            except Exception as e: st.error(f"Error: {e}")
+
+# =============================
+# 15. ADD NEW STUDENT
+# =============================
+elif menu == "Add New Student":
+    st.subheader(f"Enroll New Student – {selected_class}")
+    existing_ids = []; existing_rolls = []
+    if not df_master.empty and id_col:
+        existing_ids = df_master[id_col].astype(str).tolist()
+        if 'ROLL NO' in df_master.columns:
+            try: existing_rolls = df_master['ROLL NO'].astype(int).tolist()
+            except: pass
+    prefix = "CME"
+    max_s = 0
+    for sid in existing_ids:
+        if sid.startswith(prefix):
+            num = sid[len(prefix):]
+            if num.isdigit(): max_s = max(max_s, int(num))
+    new_id = f"{prefix}{max_s+1:02d}"
+    new_roll = 1 if not existing_rolls else max(existing_rolls)+1
+
+    with st.form("add_student_form", clear_on_submit=True):
+        st.info(new_id); st.caption("Auto ID")
+        st.info(str(new_roll)); st.caption("Auto Roll")
+        nn = st.text_input("Full Name *")
+        nf = st.text_input("Father's Name *")
+        nm = st.text_input("Mobile")
+        na = st.text_input("Address")
+        nd = st.text_input("Aadhaar")
+        nannual = st.number_input("Annual Fees Due", value=0)
+        nadm = st.number_input("Admission Fees Due", value=0)
+        if st.form_submit_button("Enroll"):
+            if not nn.strip() or not nf.strip():
+                st.error("Name and Father required.")
+            else:
+                headers = master_sheet.row_values(1)
+                row_data = {}
+                row_data['ID'] = new_id
+                row_data['NAME'] = nn.strip()
+                row_data['ROLL NO'] = str(new_roll)
+                row_data['FATHER'] = nf.strip()
+                row_data['NODE'] = ""
+                row_data['MOBILE'] = nm.strip() if nm else ""
+                row_data['ANNUAL_FEE'] = str(nannual)
+                row_data['ADMISSION_FEE'] = str(nadm)
+                row_data['ADDRESS'] = na.strip() if na else ""
+                row_data['AADHAR'] = nd.strip() if nd else ""
+                for col in ['ID','NAME','ROLL NO','FATHER','NODE','MOBILE','ANNUAL_FEE','ADMISSION_FEE','ADDRESS','AADHAR']:
+                    if col not in headers:
+                        master_sheet.update_cell(1, len(headers)+1, col)
+                        headers.append(col)
+                final_row = [row_data.get(h, "") for h in headers]
+                master_sheet.append_row(final_row, value_input_option='USER_ENTERED')
+                attendance_sheet.append_row([new_id])
+                st.success(f"Enrolled {nn}")
+                st.balloons()
+                st.cache_data.clear()
+                st.rerun()
