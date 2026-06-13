@@ -234,7 +234,7 @@ st.markdown("<h4 style='text-align: center;'>Administrative Management System</h
 st.divider()
 
 # =============================
-# 8. EXECUTIVE DASHBOARD (Principal)
+# 8. EXECUTIVE DASHBOARD (Principal) – (same as before, unchanged)
 # =============================
 if menu == "Executive Dashboard" and role == "Principal":
     st.subheader(f"Executive Dashboard – Class {selected_class}")
@@ -333,7 +333,7 @@ if menu == "Executive Dashboard" and role == "Principal":
                 st.metric("At-Risk Students (5+ consec. absences)", at_risk_count)
 
 # =============================
-# 9. STUDENT ATTENDANCE
+# 9. STUDENT ATTENDANCE (unchanged)
 # =============================
 elif menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
@@ -410,7 +410,7 @@ elif menu == "Student Attendance":
                     st.error(f"Error: {e}")
 
 # =============================
-# 10. ATTENDANCE REPORT
+# 10. ATTENDANCE REPORT (unchanged)
 # =============================
 elif menu == "Attendance Report":
     st.subheader(f"Monthly Attendance Report – Class {selected_class}")
@@ -470,7 +470,7 @@ elif menu == "Attendance Report":
                 )
 
 # =============================
-# 11. FEE COLLECTION (with Receipt Printing)
+# 11. FEE COLLECTION (with Receipt Printing) – unchanged
 # =============================
 elif menu == "Fee Collection":
     if role not in ["Clerk", "Principal"]:
@@ -535,7 +535,7 @@ elif menu == "Fee Collection":
                 st.error(f"Error: {e}")
 
 # =============================
-# 12. DAILY CASH REPORT (Clerk, Principal)
+# 12. DAILY CASH REPORT (Clerk, Principal) – unchanged
 # =============================
 elif menu == "Daily Cash Report":
     if role not in ["Clerk", "Principal"]:
@@ -563,7 +563,7 @@ elif menu == "Daily Cash Report":
         st.info("No fee records yet.")
 
 # =============================
-# 13. DEFAULTER LIST (Clerk, Principal)
+# 13. DEFAULTER LIST (Clerk, Principal) – unchanged
 # =============================
 elif menu == "Defaulter List":
     if role not in ["Clerk", "Principal"]:
@@ -619,7 +619,7 @@ elif menu == "Defaulter List":
             )
 
 # =============================
-# 14. STUDENT RECORDS (All)
+# 14. STUDENT RECORDS (All) – unchanged
 # =============================
 elif menu == "Student Records":
     st.subheader(f"Student Profile – Class {selected_class}")
@@ -671,7 +671,7 @@ elif menu == "Student Records":
                 st.warning("Student not found.")
 
 # =============================
-# 15. EDIT STUDENT DETAILS (Teacher, Principal)
+# 15. EDIT STUDENT DETAILS – unchanged
 # =============================
 elif menu == "Edit Student Details":
     st.subheader(f"Edit Student Information – Class {selected_class}")
@@ -744,7 +744,7 @@ elif menu == "Edit Student Details":
                 st.error(f"Error: {e}")
 
 # =============================
-# 16. ADD NEW STUDENT (All roles)
+# 16. ADD NEW STUDENT – unchanged
 # =============================
 elif menu == "Add New Student":
     st.subheader(f"Enroll New Student – Class {selected_class}")
@@ -805,7 +805,7 @@ elif menu == "Add New Student":
                     st.error(f"Error: {e}")
 
 # =============================
-# 17. AT-RISK STUDENTS (Teacher, Principal)
+# 17. AT-RISK STUDENTS – unchanged
 # =============================
 elif menu == "At-Risk Students":
     st.subheader(f"Dropout Risk Alert – Class {selected_class}")
@@ -854,7 +854,7 @@ elif menu == "At-Risk Students":
                 st.success("No students with 5+ consecutive absences.")
 
 # =============================
-# 18. MARKS ENTRY (NEW)
+# 18. MARKS ENTRY (NEW – Multi‑subject support)
 # =============================
 elif menu == "Marks Entry":
     st.subheader(f"Marks Entry – Class {selected_class}")
@@ -866,22 +866,44 @@ elif menu == "Marks Entry":
         with st.form("marks_form"):
             sel_student = st.selectbox("Student", ["-- Select --"] + student_list)
             exam = st.text_input("Exam (e.g. Half-Yearly, Annual)")
-            subject = st.text_input("Subject")
-            marks_obt = st.number_input("Marks Obtained", min_value=0, step=1)
-            max_marks = st.number_input("Max Marks", min_value=1, step=1, value=100)
-            grade = st.text_input("Grade (optional)")
-            if st.form_submit_button("Save Marks"):
-                if sel_student == "-- Select --" or not exam.strip() or not subject.strip():
-                    st.error("Please fill all required fields.")
+            st.markdown("**Enter subjects and marks** (one per line, format: `Subject: Obtained/Max`, e.g., `Hindi: 78/100`). You can add any number of subjects.")
+            subjects_text = st.text_area("Subjects & Marks", placeholder="Hindi: 78/100\nEnglish: 85/100\nMaths: 90/100")
+
+            if st.form_submit_button("Save All Marks"):
+                if sel_student == "-- Select --" or not exam.strip() or not subjects_text.strip():
+                    st.error("Please fill all required fields (Student, Exam, and at least one subject).")
                 else:
                     sid = sel_student.split(" - ")[0]
-                    new_row = [selected_class, sid, exam.strip(), subject.strip(), marks_obt, max_marks, grade.strip()]
-                    marks_sheet.append_row(new_row, value_input_option='USER_ENTERED')
-                    st.success("Marks saved!")
-                    st.cache_data.clear()
+                    lines = [line.strip() for line in subjects_text.split("\n") if line.strip()]
+                    rows_to_add = []
+                    for line in lines:
+                        # Expected format: "Subject: Obtained/Max"
+                        if ":" not in line or "/" not in line:
+                            st.error(f"Invalid format in line: '{line}'. Use 'Subject: Obtained/Max'")
+                            break
+                        subject_part, marks_part = line.split(":", 1)
+                        subject = subject_part.strip()
+                        marks = marks_part.strip()
+                        if "/" not in marks:
+                            st.error(f"Missing '/' in marks for {subject}. Use Obtained/Max")
+                            break
+                        obt_str, max_str = marks.split("/", 1)
+                        try:
+                            obt = int(obt_str.strip())
+                            max_m = int(max_str.strip())
+                        except:
+                            st.error(f"Invalid numbers in '{line}'")
+                            break
+                        rows_to_add.append([selected_class, sid, exam.strip(), subject, obt, max_m, ""])
+                    else:  # executed only if no break
+                        # All lines parsed successfully
+                        for row in rows_to_add:
+                            marks_sheet.append_row(row, value_input_option='USER_ENTERED')
+                        st.success(f"{len(rows_to_add)} subjects saved for {exam}!")
+                        st.cache_data.clear()
 
 # =============================
-# 19. RESULT CARD (NEW)
+# 19. RESULT CARD – (unchanged, but now will show exams)
 # =============================
 elif menu == "Result Card":
     st.subheader("Generate Result Card")
@@ -891,7 +913,6 @@ elif menu == "Result Card":
         st.warning("No students.")
     else:
         sel_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
-        # Get unique exams for this class
         try:
             all_marks = pd.DataFrame(marks_sheet.get_all_records())
             class_marks = all_marks[all_marks['Class'] == selected_class]
@@ -914,7 +935,6 @@ elif menu == "Result Card":
                 if student_marks.empty:
                     st.error("No marks found for this student and exam.")
                 else:
-                    # Attendance calculation
                     def get_attendance_pct(sid, att_data):
                         today = datetime.now()
                         start = datetime(today.year, 4, 1) if today.month >= 4 else datetime(today.year-1, 4, 1)
@@ -971,7 +991,7 @@ elif menu == "Result Card":
                         st.markdown(href, unsafe_allow_html=True)
 
 # =============================
-# 20. ADMIT CARD (NEW)
+# 20. ADMIT CARD – unchanged
 # =============================
 elif menu == "Admit Card":
     st.subheader("Generate Admit Card")
