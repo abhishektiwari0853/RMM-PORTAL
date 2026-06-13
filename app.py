@@ -72,9 +72,9 @@ if wb is None:
     st.stop()
 
 # -----------------------------
-# 4. CACHING FUNCTIONS (10 min TTL)
+# 4. CACHING FUNCTIONS (TTL = 3600 seconds = 1 hour)
 # -----------------------------
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def get_sheet_names():
     return [ws.title.strip() for ws in wb.worksheets()]
 
@@ -92,7 +92,7 @@ def find_sheet(name):
 def find_class_sheet(class_num, sheet_type):
     return find_sheet(f"{sheet_type}_{class_num}")
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def load_master_data(class_num):
     sheet = find_class_sheet(class_num, 'Master')
     if not sheet:
@@ -109,21 +109,21 @@ def load_master_data(class_num):
         student_list = [f"{row[id_col]} - {row[name_col]}" for _, row in df.iterrows()]
     return df, student_list
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def load_attendance_data(class_num):
     sheet = find_class_sheet(class_num, 'Attendance')
     if sheet:
         return sheet.get_all_values()
     return []
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def load_fees_data(class_num):
     sheet = find_class_sheet(class_num, 'Fees')
     if sheet:
         return sheet.get_all_values()
     return []
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def load_fee_structure():
     sheet = find_sheet("Fee_Structure")
     if not sheet:
@@ -203,7 +203,7 @@ with st.sidebar:
         st.rerun()
 
 # -----------------------------
-# 6. LOAD CLASS DATA
+# 6. LOAD CLASS DATA (cached, 1 hour)
 # -----------------------------
 df_master, student_list = load_master_data(selected_class)
 id_col = next((c for c in df_master.columns if c.lower() == 'student id'), None) if not df_master.empty else None
@@ -234,113 +234,130 @@ st.markdown("<h4 style='text-align: center;'>Administrative Management System</h
 st.divider()
 
 # =============================
-# 8. EXECUTIVE DASHBOARD (Principal) – (same as before, unchanged)
+# 8. EXECUTIVE DASHBOARD (Principal) – Optimised
 # =============================
 if menu == "Executive Dashboard" and role == "Principal":
     st.subheader(f"Executive Dashboard – Class {selected_class}")
-    with st.spinner("Loading executive insights..."):
-        if df_master.empty:
-            st.warning("No student data.")
-        else:
-            total_students = len(df_master)
 
-            today_str = datetime.now().strftime("%d-%m-%Y")
-            att_headers = attendance_data[0] if attendance_data else []
-            today_col = None
-            for idx, h in enumerate(att_headers):
-                if h == today_str:
-                    today_col = idx
-                    break
-            present_today = 0
-            if today_col and len(attendance_data) > 1:
-                for row in attendance_data[1:]:
-                    if today_col < len(row) and row[today_col].strip().upper() == 'P':
-                        present_today += 1
-            attendance_pct = (present_today / total_students * 100) if total_students > 0 else 0
+    @st.cache_data(ttl=3600)
+    def compute_dashboard_metrics(selected_class, df_master, attendance_data, fees_data, monthly_fee_map):
+        # This function now returns all dashboard numbers precomputed
+        total_students = len(df_master)
+        today_str = datetime.now().strftime("%d-%m-%Y")
+        att_headers = attendance_data[0] if attendance_data else []
+        today_col = None
+        for idx, h in enumerate(att_headers):
+            if h == today_str:
+                today_col = idx
+                break
+        present_today = 0
+        if today_col and len(attendance_data) > 1:
+            for row in attendance_data[1:]:
+                if today_col < len(row) and row[today_col].strip().upper() == 'P':
+                    present_today += 1
+        attendance_pct = (present_today / total_students * 100) if total_students > 0 else 0
 
-            total_today_fees = 0
-            if fees_data and len(fees_data) > 1:
-                for row in fees_data[1:]:
-                    if len(row) >= 4:
-                        date_part = row[3].split(' ')[0] if row[3] else ""
-                        if date_part == today_str and row[1].isdigit():
-                            total_today_fees += int(row[1])
+        total_today_fees = 0
+        if fees_data and len(fees_data) > 1:
+            for row in fees_data[1:]:
+                if len(row) >= 4:
+                    date_part = row[3].split(' ')[0] if row[3] else ""
+                    if date_part == today_str and row[1].isdigit():
+                        total_today_fees += int(row[1])
 
-            current_month = datetime.now().month
-            current_year = datetime.now().year
-            month_collection = 0
-            if fees_data and len(fees_data) > 1:
-                for row in fees_data[1:]:
-                    if len(row) >= 4:
-                        date_str = row[3].split(' ')[0] if row[3] else ""
-                        try:
-                            d = datetime.strptime(date_str, "%d-%m-%Y")
-                            if d.month == current_month and d.year == current_year and row[1].isdigit():
-                                month_collection += int(row[1])
-                        except:
-                            pass
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+        month_collection = 0
+        if fees_data and len(fees_data) > 1:
+            for row in fees_data[1:]:
+                if len(row) >= 4:
+                    date_str = row[3].split(' ')[0] if row[3] else ""
+                    try:
+                        d = datetime.strptime(date_str, "%d-%m-%Y")
+                        if d.month == current_month and d.year == current_year and row[1].isdigit():
+                            month_collection += int(row[1])
+                    except:
+                        pass
 
-            monthly_fee = monthly_fee_map.get(selected_class, 500)
-            expected_monthly = total_students * monthly_fee
-            collection_pct = (month_collection / expected_monthly * 100) if expected_monthly > 0 else 0
+        monthly_fee = monthly_fee_map.get(selected_class, 500)
+        expected_monthly = total_students * monthly_fee
+        collection_pct = (month_collection / expected_monthly * 100) if expected_monthly > 0 else 0
 
-            if not df_master.empty:
-                def calc_outstanding(row):
-                    total_paid = int(row['Total_Fees']) if 'Total_Fees' in row and str(row['Total_Fees']).isdigit() else 0
-                    if current_month >= 4:
-                        months = current_month - 4 + 1
-                    else:
-                        months = current_month + 9
-                    expected = months * monthly_fee
-                    return max(0, expected - total_paid)
-                df_master_temp = df_master.copy()
-                df_master_temp['Outstanding'] = df_master_temp.apply(calc_outstanding, axis=1)
-                top_defaulters = df_master_temp.nlargest(5, 'Outstanding')[['Name', 'Outstanding']]
-            else:
-                top_defaulters = pd.DataFrame()
-
-            at_risk_count = 0
-            if attendance_data and len(attendance_data) > 1:
-                for row in attendance_data[1:]:
-                    max_consec = 0
-                    streak = 0
-                    for idx in range(1, len(row)):
-                        val = row[idx].strip().upper() if idx < len(row) else ""
-                        if val != 'P':
-                            streak += 1
-                        else:
-                            streak = 0
-                        max_consec = max(max_consec, streak)
-                    if max_consec >= 5:
-                        at_risk_count += 1
-
-            col_a, col_b, col_c, col_d = st.columns(4)
-            col_a.metric("Total Students", total_students)
-            col_b.metric("Today's Attendance", f"{attendance_pct:.1f}% ({present_today}/{total_students})")
-            col_c.metric("Today's Fees Collected", f"INR {total_today_fees}")
-            col_d.metric("This Month Collection", f"INR {month_collection} ({collection_pct:.0f}%)")
-
-            st.divider()
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write("**Top 5 Defaulters (Outstanding)**")
-                if not top_defaulters.empty:
-                    st.dataframe(top_defaulters.reset_index(drop=True))
+        # Top 5 Defaulters
+        if not df_master.empty:
+            def calc_outstanding(row):
+                total_paid = int(row['Total_Fees']) if 'Total_Fees' in row and str(row['Total_Fees']).isdigit() else 0
+                if current_month >= 4:
+                    months = current_month - 4 + 1
                 else:
-                    st.write("No defaulters.")
-            with col2:
-                st.write("**Dropout Risk**")
-                st.metric("At-Risk Students (5+ consec. absences)", at_risk_count)
+                    months = current_month + 9
+                expected = months * monthly_fee
+                return max(0, expected - total_paid)
+            df_master_temp = df_master.copy()
+            df_master_temp['Outstanding'] = df_master_temp.apply(calc_outstanding, axis=1)
+            top_defaulters = df_master_temp.nlargest(5, 'Outstanding')[['Name', 'Outstanding']]
+        else:
+            top_defaulters = pd.DataFrame()
+
+        # At-Risk Count
+        at_risk_count = 0
+        if attendance_data and len(attendance_data) > 1:
+            for row in attendance_data[1:]:
+                max_consec = 0
+                streak = 0
+                for idx in range(1, len(row)):
+                    val = row[idx].strip().upper() if idx < len(row) else ""
+                    if val != 'P':
+                        streak += 1
+                    else:
+                        streak = 0
+                    max_consec = max(max_consec, streak)
+                if max_consec >= 5:
+                    at_risk_count += 1
+
+        return total_students, attendance_pct, present_today, total_today_fees, month_collection, collection_pct, top_defaulters, at_risk_count
+
+    if df_master.empty:
+        st.warning("No student data.")
+    else:
+        total_students, att_pct, present, today_fees, month_col, col_pct, top_def, at_risk = compute_dashboard_metrics(
+            selected_class, df_master, attendance_data, fees_data, monthly_fee_map
+        )
+
+        col_a, col_b, col_c, col_d = st.columns(4)
+        col_a.metric("Total Students", total_students)
+        col_b.metric("Today's Attendance", f"{att_pct:.1f}% ({present}/{total_students})")
+        col_c.metric("Today's Fees Collected", f"INR {today_fees}")
+        col_d.metric("This Month Collection", f"INR {month_col} ({col_pct:.0f}%)")
+
+        st.divider()
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**Top 5 Defaulters (Outstanding)**")
+            if not top_def.empty:
+                st.dataframe(top_def.reset_index(drop=True))
+            else:
+                st.write("No defaulters.")
+        with col2:
+            st.write("**Dropout Risk**")
+            st.metric("At-Risk Students (5+ consec. absences)", at_risk)
 
 # =============================
-# 9. STUDENT ATTENDANCE (unchanged)
+# 9. STUDENT ATTENDANCE (with search filter)
 # =============================
 elif menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
     if not student_list:
         st.warning("No students found.")
     else:
-        selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
+        # Search filter for fast selection
+        search_term = st.text_input("Search Student by Name or ID", "")
+        if search_term:
+            filtered_students = [s for s in student_list if search_term.lower() in s.lower()]
+        else:
+            filtered_students = student_list
+
+        selected_student = st.selectbox("Select Student", ["-- Select --"] + filtered_students)
 
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -470,7 +487,7 @@ elif menu == "Attendance Report":
                 )
 
 # =============================
-# 11. FEE COLLECTION (with Receipt Printing) – unchanged
+# 11. FEE COLLECTION (with Receipt Printing)
 # =============================
 elif menu == "Fee Collection":
     if role not in ["Clerk", "Principal"]:
@@ -480,7 +497,14 @@ elif menu == "Fee Collection":
     if not student_list:
         st.warning("No students found.")
     else:
-        selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
+        # Search filter for fee collection
+        search_term = st.text_input("Search Student", "")
+        if search_term:
+            filtered_students = [s for s in student_list if search_term.lower() in s.lower()]
+        else:
+            filtered_students = student_list
+
+        selected_student = st.selectbox("Select Student", ["-- Select --"] + filtered_students)
         if selected_student != "-- Select --":
             s_id = selected_student.split(" - ")[0]
             try:
@@ -535,7 +559,7 @@ elif menu == "Fee Collection":
                 st.error(f"Error: {e}")
 
 # =============================
-# 12. DAILY CASH REPORT (Clerk, Principal) – unchanged
+# 12. DAILY CASH REPORT (unchanged)
 # =============================
 elif menu == "Daily Cash Report":
     if role not in ["Clerk", "Principal"]:
@@ -626,7 +650,13 @@ elif menu == "Student Records":
     if not student_list:
         st.warning("No students found.")
     else:
-        selected_student = st.selectbox("Select Student", ["-- Select --"] + student_list)
+        search_term = st.text_input("Search Student", "")
+        if search_term:
+            filtered_students = [s for s in student_list if search_term.lower() in s.lower()]
+        else:
+            filtered_students = student_list
+
+        selected_student = st.selectbox("Select Student", ["-- Select --"] + filtered_students)
         if selected_student != "-- Select --":
             s_id = selected_student.split(" - ")[0]
             mask = df_master[id_col].astype(str) == s_id
@@ -671,14 +701,20 @@ elif menu == "Student Records":
                 st.warning("Student not found.")
 
 # =============================
-# 15. EDIT STUDENT DETAILS – unchanged
+# 15. EDIT STUDENT DETAILS (Teacher, Principal) – unchanged
 # =============================
 elif menu == "Edit Student Details":
     st.subheader(f"Edit Student Information – Class {selected_class}")
     if not student_list:
         st.warning("No students found.")
     else:
-        selected_student = st.selectbox("Choose Student to Edit", ["-- Select --"] + student_list)
+        search_term = st.text_input("Search Student", "")
+        if search_term:
+            filtered_students = [s for s in student_list if search_term.lower() in s.lower()]
+        else:
+            filtered_students = student_list
+
+        selected_student = st.selectbox("Choose Student to Edit", ["-- Select --"] + filtered_students)
         if selected_student != "-- Select --":
             s_id = selected_student.split(" - ")[0]
             try:
@@ -744,7 +780,7 @@ elif menu == "Edit Student Details":
                 st.error(f"Error: {e}")
 
 # =============================
-# 16. ADD NEW STUDENT – unchanged
+# 16. ADD NEW STUDENT (All roles) – unchanged
 # =============================
 elif menu == "Add New Student":
     st.subheader(f"Enroll New Student – Class {selected_class}")
@@ -805,7 +841,7 @@ elif menu == "Add New Student":
                     st.error(f"Error: {e}")
 
 # =============================
-# 17. AT-RISK STUDENTS – unchanged
+# 17. AT-RISK STUDENTS (Teacher, Principal) – unchanged
 # =============================
 elif menu == "At-Risk Students":
     st.subheader(f"Dropout Risk Alert – Class {selected_class}")
@@ -854,7 +890,7 @@ elif menu == "At-Risk Students":
                 st.success("No students with 5+ consecutive absences.")
 
 # =============================
-# 18. MARKS ENTRY (NEW – Multi‑subject support)
+# 18. MARKS ENTRY (Multi‑subject support) – unchanged
 # =============================
 elif menu == "Marks Entry":
     st.subheader(f"Marks Entry – Class {selected_class}")
@@ -866,7 +902,7 @@ elif menu == "Marks Entry":
         with st.form("marks_form"):
             sel_student = st.selectbox("Student", ["-- Select --"] + student_list)
             exam = st.text_input("Exam (e.g. Half-Yearly, Annual)")
-            st.markdown("**Enter subjects and marks** (one per line, format: `Subject: Obtained/Max`, e.g., `Hindi: 78/100`). You can add any number of subjects.")
+            st.markdown("**Enter subjects and marks** (one per line, format: `Subject: Obtained/Max`, e.g., `Hindi: 78/100`)")
             subjects_text = st.text_area("Subjects & Marks", placeholder="Hindi: 78/100\nEnglish: 85/100\nMaths: 90/100")
 
             if st.form_submit_button("Save All Marks"):
@@ -877,7 +913,6 @@ elif menu == "Marks Entry":
                     lines = [line.strip() for line in subjects_text.split("\n") if line.strip()]
                     rows_to_add = []
                     for line in lines:
-                        # Expected format: "Subject: Obtained/Max"
                         if ":" not in line or "/" not in line:
                             st.error(f"Invalid format in line: '{line}'. Use 'Subject: Obtained/Max'")
                             break
@@ -895,15 +930,14 @@ elif menu == "Marks Entry":
                             st.error(f"Invalid numbers in '{line}'")
                             break
                         rows_to_add.append([selected_class, sid, exam.strip(), subject, obt, max_m, ""])
-                    else:  # executed only if no break
-                        # All lines parsed successfully
+                    else:
                         for row in rows_to_add:
                             marks_sheet.append_row(row, value_input_option='USER_ENTERED')
                         st.success(f"{len(rows_to_add)} subjects saved for {exam}!")
                         st.cache_data.clear()
 
 # =============================
-# 19. RESULT CARD – (unchanged, but now will show exams)
+# 19. RESULT CARD (unchanged)
 # =============================
 elif menu == "Result Card":
     st.subheader("Generate Result Card")
@@ -991,7 +1025,7 @@ elif menu == "Result Card":
                         st.markdown(href, unsafe_allow_html=True)
 
 # =============================
-# 20. ADMIT CARD – unchanged
+# 20. ADMIT CARD (unchanged)
 # =============================
 elif menu == "Admit Card":
     st.subheader("Generate Admit Card")
