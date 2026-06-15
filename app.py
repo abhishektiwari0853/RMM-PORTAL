@@ -139,72 +139,65 @@ def load_fee_structure():
     return fee_map
 
 # -----------------------------
-# 5. SIDEBAR (using st.radio – stable)
+# 5. HEADER WITH LOGOUT AND REFRESH
 # -----------------------------
-with st.sidebar:
-    st.header("Administration Panel")
-    st.markdown(f"**Logged in as:** {st.session_state['role']}")
-
-    selected_class = st.selectbox("Academic Class", ["7", "8", "9", "10", "11", "12"])
-
-    role = st.session_state["role"]
-    if role == "Teacher":
-        menu_options = [
-            "Student Attendance",
-            "Attendance Report",
-            "Marks Entry",
-            "Result Card",
-            "Admit Card",
-            "Student Records",
-            "Edit Student Details",
-            "Add New Student",
-            "At-Risk Students"
-        ]
-    elif role == "Clerk":
-        menu_options = [
-            "Fee Collection",
-            "Daily Cash Report",
-            "Defaulter List",
-            "Result Card",
-            "Admit Card",
-            "Add New Student",
-            "Student Records"
-        ]
-    elif role == "Principal":
-        menu_options = [
-            "Executive Dashboard",
-            "Student Attendance",
-            "Attendance Report",
-            "Fee Collection",
-            "Daily Cash Report",
-            "Defaulter List",
-            "Marks Entry",
-            "Result Card",
-            "Admit Card",
-            "Student Records",
-            "Edit Student Details",
-            "Add New Student",
-            "At-Risk Students"
-        ]
-    else:
-        st.error("Invalid role")
-        st.stop()
-
-    menu = st.radio("Navigation", menu_options, label_visibility="collapsed")
-
+col_logo, col_title, col_logout = st.columns([1, 3, 1])
+with col_logo:
+    try:
+        st.image("School_logo.png", width=80)
+    except:
+        pass
+with col_title:
+    st.markdown("<h1 style='text-align: center;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center;'>Administrative Management System</h4>", unsafe_allow_html=True)
+with col_logout:
     if st.button("Logout"):
         st.session_state["authenticated"] = False
         st.session_state["role"] = None
         st.cache_data.clear()
         st.rerun()
-
     if st.button("Refresh Data"):
         st.cache_data.clear()
         st.rerun()
 
+st.divider()
+
 # -----------------------------
-# 6. LOAD CLASS DATA (cached, 1 hour)
+# 6. SESSION STATE FOR NAVIGATION
 # -----------------------------
+if "section" not in st.session_state:
+    st.session_state["section"] = None
+if "selected_class" not in st.session_state:
+    st.session_state["selected_class"] = None
+
+# -----------------------------
+# 7. THREE BIG BUTTONS FOR MAIN SECTIONS
+# -----------------------------
+if st.session_state["section"] is None:
+    st.markdown("### Select a Module")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("🎓 Student Section", use_container_width=True):
+            st.session_state["section"] = "Student"
+            st.rerun()
+    with col2:
+        if st.button("💰 Fees Management", use_container_width=True):
+            st.session_state["section"] = "Fees"
+            st.rerun()
+    with col3:
+        if st.button("📊 Executive Dashboard", use_container_width=True):
+            st.session_state["section"] = "Dashboard"
+            st.rerun()
+    st.stop()
+
+# -----------------------------
+# 8. COMMON CLASS SELECTION (after section is chosen)
+# -----------------------------
+st.markdown(f"### Current Module: **{st.session_state['section']}**")
+selected_class = st.selectbox("Select Academic Class", ["7", "8", "9", "10", "11", "12"], key="class_selector")
+st.session_state["selected_class"] = selected_class
+
+# Load data for selected class (cached)
 df_master, student_list = load_master_data(selected_class)
 id_col = next((c for c in df_master.columns if c.lower() == 'student id'), None) if not df_master.empty else None
 name_col = next((c for c in df_master.columns if c.lower() == 'name'), None) if not df_master.empty else None
@@ -218,7 +211,6 @@ master_sheet = find_class_sheet(selected_class, 'Master')
 attendance_sheet = find_class_sheet(selected_class, 'Attendance')
 fees_sheet = find_class_sheet(selected_class, 'Fees')
 
-# ── New sheets for Marks & Exam Schedule ──
 marks_sheet = find_sheet("Marks_Entry")
 exam_schedule_sheet = find_sheet("Exam_Schedule")
 
@@ -227,21 +219,55 @@ if not all([master_sheet, attendance_sheet, fees_sheet]):
     st.stop()
 
 # -----------------------------
-# 7. BRANDING
+# 9. SUB-MENU OPTIONS BASED ON SECTION & ROLE
 # -----------------------------
-st.markdown("<h1 style='text-align: center;'>RAM MURTI MISHRA INTER COLLEGE</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center;'>Administrative Management System</h4>", unsafe_allow_html=True)
-st.divider()
+role = st.session_state["role"]
+section = st.session_state["section"]
+
+if section == "Student":
+    if role == "Teacher":
+        sub_options = [
+            "Student Attendance","Attendance Report",
+            "Marks Entry","Result Card","Admit Card",
+            "Student Records","Edit Student Details","Add New Student","At-Risk Students"
+        ]
+    elif role == "Clerk":
+        sub_options = ["Result Card","Admit Card","Add New Student","Student Records"]
+    else:  # Principal
+        sub_options = [
+            "Student Attendance","Attendance Report",
+            "Marks Entry","Result Card","Admit Card",
+            "Student Records","Edit Student Details","Add New Student","At-Risk Students"
+        ]
+elif section == "Fees":
+    if role == "Teacher":
+        st.warning("You do not have access to this section.")
+        st.stop()
+    elif role == "Clerk":
+        sub_options = ["Fee Collection","Daily Cash Report","Defaulter List"]
+    else:  # Principal
+        sub_options = ["Fee Collection","Daily Cash Report","Defaulter List"]
+elif section == "Dashboard":
+    if role == "Principal":
+        sub_options = ["Executive Dashboard"]
+    else:
+        st.warning("Only Principal can view the Dashboard.")
+        st.stop()
+
+# Show sub-menu only if there are options
+if section != "Dashboard":
+    menu = st.radio("Choose Action", sub_options, horizontal=True, label_visibility="collapsed")
+else:
+    menu = "Executive Dashboard"
 
 # =============================
-# 8. EXECUTIVE DASHBOARD (Principal) – Optimised
+# 10. EXECUTIVE DASHBOARD (Principal only)
 # =============================
-if menu == "Executive Dashboard" and role == "Principal":
+if menu == "Executive Dashboard":
     st.subheader(f"Executive Dashboard – Class {selected_class}")
 
     @st.cache_data(ttl=3600)
     def compute_dashboard_metrics(selected_class, df_master, attendance_data, fees_data, monthly_fee_map):
-        # This function now returns all dashboard numbers precomputed
         total_students = len(df_master)
         today_str = datetime.now().strftime("%d-%m-%Y")
         att_headers = attendance_data[0] if attendance_data else []
@@ -283,7 +309,6 @@ if menu == "Executive Dashboard" and role == "Principal":
         expected_monthly = total_students * monthly_fee
         collection_pct = (month_collection / expected_monthly * 100) if expected_monthly > 0 else 0
 
-        # Top 5 Defaulters
         if not df_master.empty:
             def calc_outstanding(row):
                 total_paid = int(row['Total_Fees']) if 'Total_Fees' in row and str(row['Total_Fees']).isdigit() else 0
@@ -299,7 +324,6 @@ if menu == "Executive Dashboard" and role == "Principal":
         else:
             top_defaulters = pd.DataFrame()
 
-        # At-Risk Count
         at_risk_count = 0
         if attendance_data and len(attendance_data) > 1:
             for row in attendance_data[1:]:
@@ -343,14 +367,13 @@ if menu == "Executive Dashboard" and role == "Principal":
             st.metric("At-Risk Students (5+ consec. absences)", at_risk)
 
 # =============================
-# 9. STUDENT ATTENDANCE (with search filter)
+# 11. STUDENT ATTENDANCE (with search filter)
 # =============================
 elif menu == "Student Attendance":
     st.subheader(f"Daily Attendance – Class {selected_class}")
     if not student_list:
         st.warning("No students found.")
     else:
-        # Search filter for fast selection
         search_term = st.text_input("Search Student by Name or ID", "")
         if search_term:
             filtered_students = [s for s in student_list if search_term.lower() in s.lower()]
@@ -427,7 +450,7 @@ elif menu == "Student Attendance":
                     st.error(f"Error: {e}")
 
 # =============================
-# 10. ATTENDANCE REPORT (unchanged)
+# 12. ATTENDANCE REPORT
 # =============================
 elif menu == "Attendance Report":
     st.subheader(f"Monthly Attendance Report – Class {selected_class}")
@@ -487,7 +510,7 @@ elif menu == "Attendance Report":
                 )
 
 # =============================
-# 11. FEE COLLECTION (with Receipt Printing)
+# 13. FEE COLLECTION (with Receipt Printing)
 # =============================
 elif menu == "Fee Collection":
     if role not in ["Clerk", "Principal"]:
@@ -497,7 +520,6 @@ elif menu == "Fee Collection":
     if not student_list:
         st.warning("No students found.")
     else:
-        # Search filter for fee collection
         search_term = st.text_input("Search Student", "")
         if search_term:
             filtered_students = [s for s in student_list if search_term.lower() in s.lower()]
@@ -559,7 +581,7 @@ elif menu == "Fee Collection":
                 st.error(f"Error: {e}")
 
 # =============================
-# 12. DAILY CASH REPORT (unchanged)
+# 14. DAILY CASH REPORT
 # =============================
 elif menu == "Daily Cash Report":
     if role not in ["Clerk", "Principal"]:
@@ -587,7 +609,7 @@ elif menu == "Daily Cash Report":
         st.info("No fee records yet.")
 
 # =============================
-# 13. DEFAULTER LIST (Clerk, Principal) – unchanged
+# 15. DEFAULTER LIST
 # =============================
 elif menu == "Defaulter List":
     if role not in ["Clerk", "Principal"]:
@@ -643,7 +665,7 @@ elif menu == "Defaulter List":
             )
 
 # =============================
-# 14. STUDENT RECORDS (All) – unchanged
+# 16. STUDENT RECORDS
 # =============================
 elif menu == "Student Records":
     st.subheader(f"Student Profile – Class {selected_class}")
@@ -701,7 +723,7 @@ elif menu == "Student Records":
                 st.warning("Student not found.")
 
 # =============================
-# 15. EDIT STUDENT DETAILS (Teacher, Principal) – unchanged
+# 17. EDIT STUDENT DETAILS
 # =============================
 elif menu == "Edit Student Details":
     st.subheader(f"Edit Student Information – Class {selected_class}")
@@ -780,7 +802,7 @@ elif menu == "Edit Student Details":
                 st.error(f"Error: {e}")
 
 # =============================
-# 16. ADD NEW STUDENT (All roles) – unchanged
+# 18. ADD NEW STUDENT
 # =============================
 elif menu == "Add New Student":
     st.subheader(f"Enroll New Student – Class {selected_class}")
@@ -841,7 +863,7 @@ elif menu == "Add New Student":
                     st.error(f"Error: {e}")
 
 # =============================
-# 17. AT-RISK STUDENTS (Teacher, Principal) – unchanged
+# 19. AT-RISK STUDENTS
 # =============================
 elif menu == "At-Risk Students":
     st.subheader(f"Dropout Risk Alert – Class {selected_class}")
@@ -890,7 +912,7 @@ elif menu == "At-Risk Students":
                 st.success("No students with 5+ consecutive absences.")
 
 # =============================
-# 18. MARKS ENTRY (Multi‑subject support) – unchanged
+# 20. MARKS ENTRY (Multi‑subject support)
 # =============================
 elif menu == "Marks Entry":
     st.subheader(f"Marks Entry – Class {selected_class}")
@@ -937,7 +959,7 @@ elif menu == "Marks Entry":
                         st.cache_data.clear()
 
 # =============================
-# 19. RESULT CARD (unchanged)
+# 21. RESULT CARD
 # =============================
 elif menu == "Result Card":
     st.subheader("Generate Result Card")
@@ -1025,7 +1047,7 @@ elif menu == "Result Card":
                         st.markdown(href, unsafe_allow_html=True)
 
 # =============================
-# 20. ADMIT CARD (unchanged)
+# 22. ADMIT CARD
 # =============================
 elif menu == "Admit Card":
     st.subheader("Generate Admit Card")
