@@ -177,15 +177,15 @@ if st.session_state["section"] is None:
     st.markdown("### Select a Module")
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("🎓 Student Section", use_container_width=True):
+        if st.button("🎓 Student Section", width='stretch'):
             st.session_state["section"] = "Student"
             st.rerun()
     with col2:
-        if st.button("💰 Fees Management", use_container_width=True):
+        if st.button("💰 Fees Management", width='stretch'):
             st.session_state["section"] = "Fees"
             st.rerun()
     with col3:
-        if st.button("📊 Executive Dashboard", use_container_width=True):
+        if st.button("📊 Executive Dashboard", width='stretch'):
             st.session_state["section"] = "Dashboard"
             st.rerun()
     st.stop()
@@ -500,7 +500,7 @@ elif menu == "Attendance Report":
                 st.dataframe(df_rep.style.map(highlight_low, subset=['Attendance %']), use_container_width=True)
 
                 buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df_rep.to_excel(writer, index=False, sheet_name='Attendance')
                 st.download_button(
                     label="Download Excel Report",
@@ -655,7 +655,7 @@ elif menu == "Defaulter List":
                 return ''
             st.dataframe(df_def.style.map(hl, subset=['Outstanding']), use_container_width=True)
             buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df_def.to_excel(writer, index=False, sheet_name='Defaulters')
             st.download_button(
                 label="Download Defaulter List (Excel)",
@@ -707,7 +707,7 @@ elif menu == "Student Records":
                         st.dataframe(pd.DataFrame(history, columns=fee_headers), use_container_width=True)
                         df_hist = pd.DataFrame(history, columns=fee_headers)
                         buf = io.BytesIO()
-                        with pd.ExcelWriter(buf, engine='xlsxwriter') as w:
+                        with pd.ExcelWriter(buf, engine='openpyxl') as w:
                             df_hist.to_excel(w, index=False, sheet_name='FeeHistory')
                         st.download_button(
                             label="Download Fee History (Excel)",
