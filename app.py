@@ -12,8 +12,22 @@ import base64
 st.set_page_config(page_title="RMM Administrative Portal", page_icon="🏫", layout="wide")
 
 # =====================================================================
-# NO CUSTOM CSS – USING STREAMLIT'S DEFAULT LIGHT THEME
+# SIMPLE RESPONSIVE STYLING – KEEPS BUTTONS VISIBLE ON MOBILE
 # =====================================================================
+st.markdown("""
+<style>
+@media (max-width: 640px) {
+    .stButton > button {
+        font-size: 16px;
+        padding: 10px 15px;
+        white-space: nowrap;
+    }
+    .stSelectbox select {
+        font-size: 14px;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
 
 # -----------------------------
 # 2. ROLE-BASED LOGIN (Simple centered form)
@@ -139,7 +153,7 @@ def load_fee_structure():
     return fee_map
 
 # -----------------------------
-# 5. HEADER WITH LOGOUT AND REFRESH
+# 5. HEADER WITH LOGOUT, REFRESH AND BACK BUTTON
 # -----------------------------
 col_logo, col_title, col_logout = st.columns([1, 3, 1])
 with col_logo:
@@ -159,6 +173,11 @@ with col_logout:
     if st.button("Refresh Data"):
         st.cache_data.clear()
         st.rerun()
+    # 🔙 BACK BUTTON – always visible when inside a section
+    if st.session_state.get("section") is not None:
+        if st.button("🔙 Back"):
+            st.session_state["section"] = None
+            st.rerun()
 
 st.divider()
 
@@ -177,15 +196,15 @@ if st.session_state["section"] is None:
     st.markdown("### Select a Module")
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("🎓 Student Section", width='stretch'):
+        if st.button("🎓 Student Section", key="btn_student", width='stretch'):
             st.session_state["section"] = "Student"
             st.rerun()
     with col2:
-        if st.button("💰 Fees Management", width='stretch'):
+        if st.button("💰 Fees Management", key="btn_fees", width='stretch'):
             st.session_state["section"] = "Fees"
             st.rerun()
     with col3:
-        if st.button("📊 Executive Dashboard", width='stretch'):
+        if st.button("📊 Executive Dashboard", key="btn_dashboard", width='stretch'):
             st.session_state["section"] = "Dashboard"
             st.rerun()
     st.stop()
