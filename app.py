@@ -9,7 +9,7 @@ import base64
 # -----------------------------
 # 1. CONFIGURATION
 # -----------------------------
-st.set_page_config(page_title="RMM Administrative Portal", page_icon="🏫", layout="wide")
+st.set_page_config(page_title="RMM Administrative Portal", page_icon="", layout="wide")
 
 # =====================================================================
 # SIMPLE RESPONSIVE STYLING – KEEPS BUTTONS VISIBLE ON MOBILE
@@ -196,7 +196,7 @@ if st.session_state["section"] is None:
     st.markdown("### Select a Module")
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("🎓 Student Section", key="btn_student", width='stretch'):
+        if st.button(" Student Section", key="btn_student", width='stretch'):
             st.session_state["section"] = "Student"
             st.rerun()
     with col2:
