@@ -173,9 +173,9 @@ with col_logout:
     if st.button("Refresh Data"):
         st.cache_data.clear()
         st.rerun()
-    # 🔙 BACK BUTTON – always visible when inside a section
+    #  BACK BUTTON – always visible when inside a section
     if st.session_state.get("section") is not None:
-        if st.button("🔙 Back"):
+        if st.button(" Back"):
             st.session_state["section"] = None
             st.rerun()
 
@@ -200,11 +200,11 @@ if st.session_state["section"] is None:
             st.session_state["section"] = "Student"
             st.rerun()
     with col2:
-        if st.button("💰 Fees Management", key="btn_fees", width='stretch'):
+        if st.button(" Fees Management", key="btn_fees", width='stretch'):
             st.session_state["section"] = "Fees"
             st.rerun()
     with col3:
-        if st.button("📊 Executive Dashboard", key="btn_dashboard", width='stretch'):
+        if st.button(" Executive Dashboard", key="btn_dashboard", width='stretch'):
             st.session_state["section"] = "Dashboard"
             st.rerun()
     st.stop()
